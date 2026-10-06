@@ -12,6 +12,7 @@ use NeuronAI\Chat\Messages\ToolResultMessage;
 use NeuronAI\Chat\Messages\UserMessage;
 use RuntimeException;
 use NeuronAI\AgentSkills\Skill;
+use NeuronAI\AgentSkills\Tests\Fixtures\TableSkillStorage;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
@@ -55,6 +56,102 @@ class MultipleSkillStoragesTest extends TestCase
         file_put_contents($directory.'/SKILL.md', $document);
         file_put_contents($directory.'/guide.md', $source.' guide for '.$name);
         return $document;
+    }
+
+    public function test_local_and_database_skills_with_the_same_name_are_independently_selected(): void
+    {
+        $localDocument = $this->skill('project', 'caveman', 'caveman', 'Local caveman');
+        file_put_contents($this->root.'/project/caveman/local-only.md', 'Local content must not leak.');
+        $databaseDocument = "---\nname: caveman\ndescription: Database caveman\n---\nRead references/guide.md.\n";
+        $localLocation = 'file://'.$this->root.'/project/caveman/';
+        $databaseLocation = 'db://team/team%20caveman/';
+        $repository = new SkillRepository(
+            new FileSystemSkillStorage('file://'.$this->root.'/project/'),
+            new TableSkillStorage('db://team/', [
+                ['skill_name' => 'team caveman', 'path' => 'SKILL.md', 'content' => $databaseDocument],
+                ['skill_name' => 'team caveman', 'path' => 'references/guide.md', 'content' => 'Database guide.'],
+            ]),
+        );
+        mkdir($this->root.'/project/caveman/references');
+        file_put_contents($this->root.'/project/caveman/references/guide.md', 'Local guide.');
+        $toolkit = new SkillToolkit($repository);
+        $this->assertSame(['caveman', 'caveman'], $repository->names());
+        $this->assertSame($localDocument, $repository->get($localLocation)->readDocument());
+        $this->assertSame($databaseDocument, $repository->get($databaseLocation)->readDocument());
+        $this->assertSame('Database guide.', $repository->get($databaseLocation)->readResource('references/guide.md'));
+        [$skill, $resource] = $toolkit->tools();
+        $provider = new FakeAIProvider(
+            new ToolCallMessage(null, [
+                (new ToolCall($skill->getName(), 'local'))->setInputs(['location' => $localLocation]),
+                (new ToolCall($skill->getName(), 'database'))->setInputs(['location' => $databaseLocation]),
+            ]),
+            new ToolCallMessage(null, [
+                (new ToolCall($resource->getName(), 'local-guide'))->setInputs(['location' => $localLocation, 'path' => 'references/guide.md']),
+                (new ToolCall($resource->getName(), 'database-guide'))->setInputs(['location' => $databaseLocation, 'path' => 'references/guide.md']),
+                (new ToolCall($resource->getName(), 'missing-guide'))->setInputs(['location' => $databaseLocation, 'path' => 'local-only.md']),
+            ]),
+            new AssistantMessage('Both sources checked.'),
+        );
+        $agent = Agent::make()->setThreadId('same-name')->setAiProvider($provider)->addTool($toolkit);
+        $this->assertSame('Both sources checked.', $agent->chat(new UserMessage('Compare the caveman sources.'))->getMessage()->getContent());
+        $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
+        $this->assertStringContainsString('caveman: Local caveman (location: '.$localLocation.')', $prompt);
+        $this->assertStringContainsString('caveman: Database caveman (location: '.$databaseLocation.')', $prompt);
+        $expectedResults = [
+            'local' => $localDocument,
+            'database' => $databaseDocument,
+            'local-guide' => 'Local guide.',
+            'database-guide' => 'Database guide.',
+            'missing-guide' => 'Database resource "local-only.md" is unavailable in "'.$databaseLocation.'".',
+        ];
+        foreach ($expectedResults as $id => $expected) {
+            $provider->assertSent(static function (RequestRecord $request) use ($id, $expected): bool {
+                foreach ($request->messages as $message) {
+                    if ($message instanceof ToolResultMessage) {
+                        foreach ($message->getToolCalls() as $tool) {
+                            if ($tool->getCallId() === $id && str_contains($tool->getResult(), $expected)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            });
+        }
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage($expectedResults['missing-guide']);
+        $repository->get($databaseLocation)->readResource('local-only.md');
+    }
+
+    public function test_overlapping_mounts_with_distinct_locations_route_to_their_owners(): void
+    {
+        $outer = "---\nname: shared\ndescription: Outer\n---\nOuter document";
+        $inner = "---\nname: shared\ndescription: Inner\n---\nInner document";
+        $toolkit = SkillToolkit::make()->fromStorage(
+            new TableSkillStorage('db://team/', [
+                ['skill_name' => 'nested', 'path' => 'SKILL.md', 'content' => $outer],
+            ]),
+            new TableSkillStorage('db://team/nested/', [
+                ['skill_name' => 'child', 'path' => 'SKILL.md', 'content' => $inner],
+            ]),
+        );
+        [$activation] = $toolkit->tools();
+        foreach (['db://team/nested/' => $outer, 'db://team/nested/child/' => $inner] as $location => $document) {
+            $this->assertStringContainsString('location: '.$location, $toolkit->guidelines() ?? '');
+            $activation->setInputs(['location' => $location])->execute();
+            $this->assertSame($document, $activation->getResult());
+        }
+    }
+
+    public function test_toolkit_discovery_rejects_duplicate_locations_as_configuration_errors(): void
+    {
+        $storage = new TableSkillStorage('db://team/', [
+            ['skill_name' => 'caveman', 'path' => 'SKILL.md', 'content' => "---\nname: caveman\ndescription: Caveman\n---\nBody"],
+        ]);
+        $toolkit = SkillToolkit::make()->fromStorage($storage, $storage);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Duplicate skill location "db://team/caveman/".');
+        $toolkit->tools();
     }
 
     public function test_numeric_directory_identifiers_remain_strings_across_storages(): void

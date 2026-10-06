@@ -101,6 +101,75 @@ class SkillRepositoryTest extends TestCase
         $this->assertSame(2, $storage->listCalls);
     }
 
+    public function test_duplicate_locations_fail_without_publishing_a_partial_catalog(): void
+    {
+        $document = "---\nname: shared\ndescription: Shared\n---\nBody";
+        $original = new InMemorySkillStorage(['z-shared' => ['SKILL.md' => $document]]);
+        $conflicting = new InMemorySkillStorage([
+            'a-new' => ['SKILL.md' => $document],
+            'z-shared' => ['SKILL.md' => $document],
+        ]);
+        $repository = new SkillRepository($original);
+        $selected = $repository->get('memory://skills/z-shared/');
+        $repository->addStorage($conflicting);
+
+        foreach (['catalog', 'names', 'diagnostics', 'get'] as $accessor) {
+            try {
+                $accessor === 'get' ? $repository->get('memory://skills/a-new/') : $repository->{$accessor}();
+                $this->fail('A conflicting discovery must remain a configuration failure.');
+            } catch (RuntimeException $exception) {
+                $this->assertSame('Duplicate skill location "memory://skills/z-shared/".', $exception->getMessage());
+            }
+        }
+
+        unset($conflicting->files['z-shared']);
+        $this->assertSame(['shared', 'shared'], $repository->names());
+        $this->assertSame($selected, $repository->get('memory://skills/z-shared/'));
+        $this->assertSame($document, $repository->get('memory://skills/a-new/')->readDocument());
+        $this->assertSame([], $repository->diagnostics());
+    }
+
+    /** @dataProvider duplicateDocuments */
+    public function test_duplicate_locations_cannot_be_hidden_by_unusable_documents(bool $sameAdapter, ?string $contents): void
+    {
+        $first = new class (['shared' => $contents === null ? [] : ['SKILL.md' => $contents]], $sameAdapter) extends InMemorySkillStorage {
+            /** @param array<string, array<string, string>> $files */
+            public function __construct(array $files, private bool $duplicate)
+            {
+                parent::__construct($files);
+            }
+
+            public function list(): array
+            {
+                return $this->duplicate
+                    ? ['memory://skills/shared/', 'memory://skills/shared/']
+                    : ['memory://skills/shared/'];
+            }
+        };
+        $storages = [$first];
+        if (!$sameAdapter) {
+            $storages[] = new InMemorySkillStorage([
+                'shared' => ['SKILL.md' => "---\nname: shared\ndescription: Valid\n---\nBody"],
+            ]);
+        }
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Duplicate skill location "memory://skills/shared/".');
+        (new SkillRepository(...$storages))->catalog();
+    }
+
+    /** @return array<string, array{bool, ?string}> */
+    public static function duplicateDocuments(): array
+    {
+        return [
+            'same adapter valid' => [true, "---\nname: shared\ndescription: Valid\n---\nBody"],
+            'same adapter unreadable' => [true, null],
+            'same adapter invalid' => [true, 'Invalid'],
+            'across adapters valid' => [false, "---\nname: shared\ndescription: Valid\n---\nBody"],
+            'across adapters unreadable' => [false, null],
+            'across adapters invalid' => [false, 'Invalid'],
+        ];
+    }
+
     public function test_reads_normalized_instructions_and_location(): void
     {
         $repository = new SkillRepository(new InMemorySkillStorage([

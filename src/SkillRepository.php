@@ -26,6 +26,9 @@ class SkillRepository
     /** @var list<array{skill: string, message: string}> */
     protected array $diagnostics = [];
 
+    /** @var array<string, true> */
+    private array $discoveredLocations = [];
+
     /** @var array<int, SkillStorageInterface> */
     private array $pendingStorages = [];
 
@@ -79,12 +82,14 @@ class SkillRepository
         foreach ($this->pendingStorages as $index => $storage) {
             $catalog = $this->catalog;
             $diagnostics = $this->diagnostics;
+            $locations = $this->discoveredLocations;
 
             try {
                 $this->buildCatalog($storage);
             } catch (Throwable $exception) {
                 $this->catalog = $catalog;
                 $this->diagnostics = $diagnostics;
+                $this->discoveredLocations = $locations;
                 throw $exception;
             }
 
@@ -98,6 +103,14 @@ class SkillRepository
     {
         $skills = $storage->list();
         sort($skills, SORT_STRING);
+
+        foreach ($skills as $skill) {
+            if (array_key_exists($skill, $this->discoveredLocations)) {
+                throw new RuntimeException(sprintf('Duplicate skill location "%s".', $skill));
+            }
+
+            $this->discoveredLocations[$skill] = true;
+        }
 
         foreach ($skills as $skill) {
             try {
