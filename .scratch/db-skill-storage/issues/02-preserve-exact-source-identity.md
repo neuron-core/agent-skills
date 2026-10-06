@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Load skill documents and resources from a database.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Identifiers and resource paths are compared exactly, including case. Guide.md does not read guide.md, and Caveman does not select caveman. Database comparison defaults must not cause discovery to merge distinct identifiers or reads to return a different identifier or path.
 - [ ] Verify exact selection using real SQLite configurations with both case-sensitive and case-insensitive comparisons. Test both incorrectly capitalized requests and distinct identifiers that must remain independently discoverable. Keep the application-owned uniqueness constraint and document the schema's responsibilities for preserving identity.
