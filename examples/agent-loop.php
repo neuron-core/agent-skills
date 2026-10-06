@@ -50,15 +50,18 @@ $agent = Agent::make()
     ->addTool(new BashTool());
 
 echo 'Available skills: '.implode(', ', $skills->names()).PHP_EOL;
+
 foreach ($skills->diagnostics() as $diagnostic) {
-    fwrite(STDERR, sprintf("[skill: %s] %s\n", $diagnostic['skill'], $diagnostic['message']));
+    fwrite(STDERR, sprintf("[skill: %s] %s".PHP_EOL, $diagnostic['skill'], $diagnostic['message']));
 }
-echo "Try php-check for runtime checks or caveman for terse answers.\n";
-echo "See examples/README.md for setup and both scenarios.\n";
-echo "Type a message, or 'exit' to quit.\n";
+
+echo PHP_EOL;
+echo "Try php-check for runtime checks or caveman for terse answers.".PHP_EOL;
+echo "See examples/README.md for setup and both scenarios.".PHP_EOL.PHP_EOL;
+echo "Type a message, or 'exit' to quit.".PHP_EOL;
 
 while (true) {
-    echo "\nYou> ";
+    echo "\n> ";
     $input = fgets(STDIN);
     if ($input === false) {
         break;
@@ -72,11 +75,12 @@ while (true) {
         break;
     }
 
-    echo 'Agent> ';
+    echo PHP_EOL;
+
     foreach ($agent->stream(new UserMessage($input)) as $event) {
         if ($event instanceof ToolCallChunk) {
             echo sprintf(
-                "\n[tool: %s %s]\n",
+                "[tool: %s %s]".PHP_EOL.PHP_EOL,
                 $event->tool->getName(),
                 json_encode($event->tool->getInputs(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             );
