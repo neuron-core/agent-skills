@@ -55,7 +55,7 @@ use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
 $toolkit = SkillToolkit::make()
-    ->fromStorage(new FileSystemSkillStorage(__DIR__.'/.agents/skills'));
+    ->fromStorage(new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'));
 
 $agent = Agent::make()
     ->setThreadId('quick-start')
@@ -79,6 +79,9 @@ echo $response->getMessage()->getContent();
 The agent initially sees each skill's name, description and location. When a
 skill is relevant to the task, it uses `skill` to load its instructions. If those
 instructions reference supporting files, it can read them with `skill_resource`.
+Copy the catalog location verbatim into either tool. Pass resource paths
+separately, relative to the skill root even when found in a supporting document;
+do not compose resource URIs.
 This keeps the initial context small while making the full skill available when
 needed.
 
@@ -86,29 +89,37 @@ The toolkit registers two tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `skill` | Load the complete `SKILL.md` for a named skill. |
-| `skill_resource` | Read a supporting text file relative to that skill. |
+| `skill` | Load the complete `SKILL.md` at a catalog `location`. |
+| `skill_resource` | Read `path` relative to the skill root selected by `location`. |
 
 Skills can also include scripts. To execute them, register an execution tool,
 such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
 instructions and resource locations; your application controls execution.
+A `file:///` location is an address, not a native working directory. Validate
+and decode its local path before using it with an execution tool. Remote
+locations do not imply that their scripts can be executed.
+
+`FileSystemSkillStorage` accepts a local absolute file URI such as
+`file:///app/skills/`, rejecting other schemes, remote hosts, queries and
+fragments. Encode special characters in path segments when constructing mounts.
+It emits skill-root addresses with a trailing slash, excluding `SKILL.md`.
 
 ## Multiple Skill Directories
 
 Configure the storages before registering the toolkit on your agent. Pass them
-in precedence order. For example, combine bundled skills
+as separate sources. For example, combine bundled skills
 with skills installed by the CLI:
 
 ```php
 $toolkit = SkillToolkit::make()
     ->fromStorage(
-        new FileSystemSkillStorage(__DIR__.'/skills'),
-        new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
+        new FileSystemSkillStorage('file://'.__DIR__.'/skills/'),
+        new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
     );
 ```
 
-The first usable skill with a given declared name wins. Instructions and
-resources are read from that selected source. Restart the agent or recreate the
+Skills with the same declared name remain available at distinct locations.
+Instructions and resources are read from the exact selected location. Restart the agent or recreate the
 toolkit after adding skills to an existing directory: each storage is discovered
 on first access and its catalog is then reused.
 
@@ -116,8 +127,8 @@ on first access and its catalog is then reused.
 
 Share one `SkillRepository` between the toolkit and other application features,
 for example slash commands and explicit skill invocation. `catalog()` returns a
-list of `Skill` objects; `get($name)` returns the selected skill or throws a
-`RuntimeException` when the name is unavailable.
+list of `Skill` objects; `get($location)` returns the selected skill or throws a
+`RuntimeException` when that exact location is unavailable.
 
 ```php
 use NeuronAI\AgentSkills\SkillRepository;
@@ -125,19 +136,19 @@ use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
 $skills = new SkillRepository(
-    new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
+    new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
 );
 $agent->addTool(new SkillToolkit($skills));
 
 foreach ($skills->catalog() as $skill) {
-    echo $skill->name().': '.$skill->description();
+    echo $skill->name().': '.$skill->description().' ('.$skill->location().')';
 }
 
-$skill = $skills->get('caveman');
+$skill = $skills->get('file://'.__DIR__.'/.agents/skills/caveman/');
 $frontmatter = $skill->readFrontmatter();   // Parsed YAML metadata as stdClass.
 $instructions = $skill->readInstructions(); // Body without YAML frontmatter.
 $document = $skill->readDocument();         // Complete original SKILL.md.
-$location = $skill->location();             // Host-accessible location or null.
+$location = $skill->location();             // Complete non-null skill-root address.
 $resource = $skill->readResource('references/guide.md');
 ```
 
@@ -149,17 +160,19 @@ them in their host agent.
 ## Custom Storage
 
 Implement [`SkillStorageInterface`](src/Storage/SkillStorageInterface.php) to
-load skills from another backend. It defines three methods:
+load skills from another backend. It defines two methods:
 
-- `list()` returns the available storage identifiers.
-- `read($skill, $path)` reads a UTF-8 text file relative to a skill.
-- `location($skill)` returns a base location accessible to host tools, or `null`
-  when none is available.
+- `list()` returns complete canonical skill-root locations, with a trailing slash.
+- `read($location, $path)` reads UTF-8 text relative to the selected skill root.
 
-Use storage identifiers for reads and locations, even when they differ from the
-declared skill names. Remote locations require host tools that can access them.
+Configure each adapter with its complete mount point as the first constructor
+argument and backend dependencies separately. The adapter validates the mount,
+encodes its skill locations and translates each location into its backend key.
+Names in `SKILL.md` are metadata and need not match those keys. The repository
+selects only exact discovered locations; it does not route by URI prefix.
 Throw `RuntimeException` for expected read failures, such as missing or
-unreadable resources.
+unreadable resources. Empty text is valid. Reads must remain confined to the
+selected skill, without falling back to another source.
 
 ## Error Handling
 

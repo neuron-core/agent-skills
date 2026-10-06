@@ -52,13 +52,34 @@ class FileSystemSkillStorageTest extends TestCase
         mkdir($this->skillsRoot.'/analysis', 0o777, true);
         mkdir($this->skillsRoot.'/nested/ignored', 0o777, true);
 
-        $this->assertSame(['analysis', 'nested', 'writing'], (new FileSystemSkillStorage($this->skillsRoot))->list());
+        $this->assertSame(['file://'.$this->skillsRoot.'/analysis/', 'file://'.$this->skillsRoot.'/nested/', 'file://'.$this->skillsRoot.'/writing/'], (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->list());
+    }
+
+    /** @dataProvider invalidMounts */
+    public function test_rejects_invalid_mounts(string $mount): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('local absolute file URI');
+        new FileSystemSkillStorage($mount);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidMounts(): array
+    {
+        return [
+            'native path' => ['/tmp/skills'],
+            'wrong scheme' => ['db://team/'],
+            'remote host' => ['file://server/skills/'],
+            'relative path' => ['file:skills/'],
+            'query' => ['file:///skills/?x=1'],
+            'fragment' => ['file:///skills/#section'],
+        ];
     }
 
     public function test_empty_and_nonexistent_roots_have_no_skills(): void
     {
-        $this->assertSame([], (new FileSystemSkillStorage($this->skillsRoot))->list());
-        $this->assertSame([], (new FileSystemSkillStorage($this->skillsRoot.'/missing'))->list());
+        $this->assertSame([], (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->list());
+        $this->assertSame([], (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/missing'.'/'))->list());
     }
 
     public function test_package_names_are_snapshotted_while_files_are_read_lazily_and_in_full(): void
@@ -66,13 +87,13 @@ class FileSystemSkillStorageTest extends TestCase
         mkdir($this->skillsRoot.'/writing');
         $path = $this->skillsRoot.'/writing/guide.md';
         file_put_contents($path, 'Original.');
-        $storage = new FileSystemSkillStorage($this->skillsRoot);
+        $storage = new FileSystemSkillStorage('file://'.$this->skillsRoot.'/');
         mkdir($this->skillsRoot.'/added');
         $contents = str_repeat('Complete UTF-8 text: café. ', 10000);
         file_put_contents($path, $contents);
 
-        $this->assertSame(['writing'], $storage->list());
-        $this->assertSame($contents, $storage->read('writing', 'guide.md'));
+        $this->assertSame(['file://'.$this->skillsRoot.'/writing/'], $storage->list());
+        $this->assertSame($contents, $storage->read('file://'.$this->skillsRoot.'/writing/', 'guide.md'));
     }
 
     public function test_uses_a_linked_package_directory_as_its_canonical_boundary(): void
@@ -80,18 +101,17 @@ class FileSystemSkillStorageTest extends TestCase
         mkdir($this->outsideRoot.'/shared-skill');
         file_put_contents($this->outsideRoot.'/shared-skill/guide.md', 'Shared guide.');
         symlink($this->outsideRoot.'/shared-skill', $this->skillsRoot.'/shared-skill');
-        $storage = new FileSystemSkillStorage($this->skillsRoot);
+        $storage = new FileSystemSkillStorage('file://'.$this->skillsRoot.'/');
 
-        $this->assertSame(['shared-skill'], $storage->list());
-        $this->assertSame(realpath($this->outsideRoot.'/shared-skill'), $storage->location('shared-skill'));
-        $this->assertSame('Shared guide.', $storage->read('shared-skill', 'guide.md'));
+        $this->assertSame(['file://'.$this->skillsRoot.'/shared-skill/'], $storage->list());
+        $this->assertSame('Shared guide.', $storage->read('file://'.$this->skillsRoot.'/shared-skill/', 'guide.md'));
     }
 
     public function test_unknown_skill_location_is_an_expected_failure(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Skill "missing" is not available.');
-        (new FileSystemSkillStorage($this->skillsRoot))->location('missing');
+        $this->expectExceptionMessage('Skill "file://'.$this->skillsRoot.'/missing/" is not available.');
+        (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/missing/', 'SKILL.md');
     }
 
     public function test_reads_scripts_as_text_without_executing_them(): void
@@ -103,7 +123,7 @@ class FileSystemSkillStorageTest extends TestCase
 
         $this->assertSame(
             $script,
-            (new FileSystemSkillStorage($this->skillsRoot))->read('writing', 'scripts/run.sh'),
+            (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', 'scripts/run.sh'),
         );
         $this->assertFileDoesNotExist($marker);
     }
@@ -116,7 +136,7 @@ class FileSystemSkillStorageTest extends TestCase
 
         $this->assertSame(
             'Confined target.',
-            (new FileSystemSkillStorage($this->skillsRoot))->read('writing', 'guide-link.md'),
+            (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', 'guide-link.md'),
         );
     }
 
@@ -127,8 +147,8 @@ class FileSystemSkillStorageTest extends TestCase
         symlink($this->outsideRoot.'/secret.md', $this->skillsRoot.'/writing/secret-link.md');
 
         $this->assertStorageError(
-            'Resource "secret-link.md" escapes skill "writing".',
-            fn (): string => (new FileSystemSkillStorage($this->skillsRoot))->read('writing', 'secret-link.md'),
+            'Resource "secret-link.md" escapes skill "file://'.$this->skillsRoot.'/writing/".',
+            fn (): string => (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', 'secret-link.md'),
         );
     }
 
@@ -139,7 +159,7 @@ class FileSystemSkillStorageTest extends TestCase
 
         $this->assertStorageError(
             sprintf('Resource path "%s" is invalid.', $path),
-            fn (): string => (new FileSystemSkillStorage($this->skillsRoot))->read('writing', $path),
+            fn (): string => (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', $path),
         );
     }
 
@@ -158,27 +178,27 @@ class FileSystemSkillStorageTest extends TestCase
         file_put_contents($this->skillsRoot.'/secret.md', 'External target.');
 
         $this->assertStorageError(
-            'Resource "../secret.md" escapes skill "writing".',
-            fn (): string => (new FileSystemSkillStorage($this->skillsRoot))->read('writing', '../secret.md'),
+            'Resource "../secret.md" escapes skill "file://'.$this->skillsRoot.'/writing/".',
+            fn (): string => (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', '../secret.md'),
         );
     }
 
     public function test_reports_unknown_packages_missing_files_and_directories(): void
     {
         mkdir($this->skillsRoot.'/writing/references', 0o777, true);
-        $storage = new FileSystemSkillStorage($this->skillsRoot);
+        $storage = new FileSystemSkillStorage('file://'.$this->skillsRoot.'/');
 
         $this->assertStorageError(
-            'Skill "missing" is not available.',
-            fn (): string => $storage->read('missing', 'guide.md'),
+            'Skill "file://'.$this->skillsRoot.'/missing/" is not available.',
+            fn (): string => $storage->read('file://'.$this->skillsRoot.'/missing/', 'guide.md'),
         );
         $this->assertStorageError(
-            'Resource "missing.md" was not found in skill "writing".',
-            fn (): string => $storage->read('writing', 'missing.md'),
+            'Resource "missing.md" was not found in skill "file://'.$this->skillsRoot.'/writing/".',
+            fn (): string => $storage->read('file://'.$this->skillsRoot.'/writing/', 'missing.md'),
         );
         $this->assertStorageError(
-            'Resource "references" in skill "writing" is not a file.',
-            fn (): string => $storage->read('writing', 'references'),
+            'Resource "references" in skill "file://'.$this->skillsRoot.'/writing/" is not a file.',
+            fn (): string => $storage->read('file://'.$this->skillsRoot.'/writing/', 'references'),
         );
     }
 
@@ -195,8 +215,8 @@ class FileSystemSkillStorageTest extends TestCase
 
         try {
             $this->assertStorageError(
-                'Resource "locked.txt" in skill "writing" could not be read.',
-                fn (): string => (new FileSystemSkillStorage($this->skillsRoot))->read('writing', 'locked.txt'),
+                'Resource "locked.txt" in skill "file://'.$this->skillsRoot.'/writing/" could not be read.',
+                fn (): string => (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', 'locked.txt'),
             );
         } finally {
             chmod($path, 0o644);
@@ -210,8 +230,8 @@ class FileSystemSkillStorageTest extends TestCase
         file_put_contents($this->skillsRoot.'/writing/content.bin', $contents);
 
         $this->assertStorageError(
-            'Resource "content.bin" in skill "writing" contains unsupported binary content.',
-            fn (): string => (new FileSystemSkillStorage($this->skillsRoot))->read('writing', 'content.bin'),
+            'Resource "content.bin" in skill "file://'.$this->skillsRoot.'/writing/" contains unsupported binary content.',
+            fn (): string => (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', 'content.bin'),
         );
     }
 

@@ -62,15 +62,15 @@ class SkillRepository
     }
 
     /** @throws RuntimeException */
-    public function get(string $name): Skill
+    public function get(string $location): Skill
     {
         $catalog = $this->resolveCatalog();
 
-        if (!array_key_exists($name, $catalog)) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $name));
+        if (!array_key_exists($location, $catalog)) {
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
         }
 
-        return $catalog[$name];
+        return $catalog[$location];
     }
 
     /** @return array<string, Skill> */
@@ -107,7 +107,7 @@ class SkillRepository
                 continue;
             }
 
-            $parsed = (new SkillDocumentParser())->parse($contents, $skill);
+            $parsed = (new SkillDocumentParser())->parse($contents);
             foreach ($parsed['warnings'] as $message) {
                 $this->diagnostics[] = ['skill' => $skill, 'message' => $message];
             }
@@ -116,14 +116,7 @@ class SkillRepository
                 continue;
             }
             $name = $document['name'];
-            if (array_key_exists($name, $this->catalog)) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => sprintf(
-                    'Skill "%s" is shadowed by an earlier candidate with the same name.',
-                    $name,
-                )];
-                continue;
-            }
-            $this->catalog[$name] = new Skill($name, $document['description'], $storage, $skill);
+            $this->catalog[$skill] = new Skill($name, $document['description'], $storage, $skill);
         }
     }
 }
