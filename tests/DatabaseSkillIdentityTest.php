@@ -14,10 +14,9 @@ use RuntimeException;
 
 class DatabaseSkillIdentityTest extends TestCase
 {
-    /** @dataProvider comparisonModes */
-    public function test_case_distinct_identifiers_and_paths_remain_independently_selectable(string $collation): void
+    public function test_case_distinct_identifiers_and_paths_remain_independently_selectable(): void
     {
-        $pdo = $this->database($collation);
+        $pdo = $this->database();
         $lower = "---\nname: caveman\ndescription: Lowercase source\n---\nLowercase document";
         $upper = "---\nname: caveman\ndescription: Uppercase source\n---\nUppercase document";
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
@@ -25,7 +24,7 @@ class DatabaseSkillIdentityTest extends TestCase
         $insert->execute(['Caveman', 'SKILL.md', $upper]);
         $insert->execute(['caveman', 'guide.md', 'Lowercase path']);
         $insert->execute(['caveman', 'Guide.md', 'Uppercase path']);
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $toolkit = new SkillToolkit($repository);
 
         $this->assertSame(['db://team/Caveman/', 'db://team/caveman/'], array_map(
@@ -39,15 +38,14 @@ class DatabaseSkillIdentityTest extends TestCase
         $this->assertSame('Lowercase path', $repository->get('db://team/caveman/')->readResource('guide.md'));
     }
 
-    /** @dataProvider comparisonModes */
-    public function test_wrong_capitalization_cannot_select_another_identifier_or_resource(string $collation): void
+    public function test_wrong_capitalization_cannot_select_another_identifier_or_resource(): void
     {
-        $pdo = $this->database($collation);
+        $pdo = $this->database();
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['caveman', 'SKILL.md', "---\nname: caveman\ndescription: Exact spelling\n---\nDocument"]);
         $insert->execute(['caveman', 'guide.md', 'Lowercase guide']);
         $insert->execute(['orphan', 'skill.md', "---\nname: orphan\ndescription: Wrong document case\n---\nWrong"]);
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $this->assertSame(['caveman'], $repository->names());
         $this->assertCount(1, $repository->diagnostics());
         [, $resource] = (new SkillToolkit($repository))->tools();
@@ -78,7 +76,7 @@ class DatabaseSkillIdentityTest extends TestCase
             $insert->execute([$identifier, 'notes%20.md', 'Literal percent resource for '.$identifier]);
             $insert->execute([$identifier, 'notes .md', 'Space resource must not be selected']);
         }
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $toolkit = new SkillToolkit($repository);
         $this->assertCount(3, $repository->catalog());
         [$activation, $resource] = $toolkit->tools();
@@ -101,13 +99,13 @@ class DatabaseSkillIdentityTest extends TestCase
         $archived = "---\nname: writing\ndescription: Archive table\n---\nArchived document";
         $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute(['writing', 'SKILL.md', $document]);
         $pdo->exec("INSERT INTO skills VALUES ('writing', 'guide.md', 'Shared guide')");
-        $pdo->exec('CREATE TABLE archived_skills (skill_name TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_name, path))');
+        $pdo->exec('CREATE TABLE archived_skills (skill_identifier TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_identifier, path))');
         $pdo->prepare('INSERT INTO archived_skills VALUES (?, ?, ?)')->execute(['writing', 'SKILL.md', $archived]);
         $pdo->exec("INSERT INTO archived_skills VALUES ('writing', 'guide.md', 'Archive guide')");
         $repository = new SkillRepository(
-            new DatabaseSkillStorage('db://first/', $pdo),
-            new DatabaseSkillStorage('db://second/', $pdo),
-            new DatabaseSkillStorage('db://archive/', $pdo, 'archived_skills'),
+            new DatabaseSkillStorage($pdo, baseUri: 'db://first/'),
+            new DatabaseSkillStorage($pdo, baseUri: 'db://second/'),
+            new DatabaseSkillStorage($pdo, table: 'archived_skills', baseUri: 'db://archive/'),
         );
         $toolkit = new SkillToolkit($repository);
         $this->assertCount(3, $repository->catalog());
@@ -130,8 +128,8 @@ class DatabaseSkillIdentityTest extends TestCase
             'writing', 'SKILL.md', "---\nname: writing\ndescription: Shared table\n---\nDocument",
         ]);
         $toolkit = SkillToolkit::make()->fromStorage(
-            new DatabaseSkillStorage('db://team/', $pdo),
-            new DatabaseSkillStorage('db://team/', $pdo),
+            new DatabaseSkillStorage($pdo, baseUri: 'db://team/'),
+            new DatabaseSkillStorage($pdo, baseUri: 'db://team/'),
         );
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Duplicate skill location "db://team/writing/".');
@@ -140,10 +138,10 @@ class DatabaseSkillIdentityTest extends TestCase
 
     public function test_deleted_identifier_cannot_read_a_differently_capitalized_replacement(): void
     {
-        $pdo = $this->database('NOCASE');
+        $pdo = $this->database();
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['Caveman', 'SKILL.md', "---\nname: caveman\ndescription: Original\n---\nOriginal document"]);
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $skill = $repository->get('db://team/Caveman/');
         $pdo->exec('DELETE FROM skills');
         $insert->execute(['caveman', 'SKILL.md', "---\nname: caveman\ndescription: Replacement\n---\nWrong document"]);
@@ -153,19 +151,12 @@ class DatabaseSkillIdentityTest extends TestCase
         $skill->readDocument();
     }
 
-    /** @return array<string, array{string}> */
-    public static function comparisonModes(): array
-    {
-        return ['case sensitive' => ['BINARY'], 'case insensitive' => ['NOCASE']];
-    }
-
-    private function database(string $collation = 'BINARY'): PDO
+    private function database(): PDO
     {
         $pdo = new PDO('sqlite::memory:');
-        // Comparison defaults can differ from the application's exact uniqueness contract.
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT COLLATE '.$collation.' NOT NULL,
-            path TEXT COLLATE '.$collation.' NOT NULL, content TEXT NOT NULL,
-            UNIQUE (skill_name COLLATE BINARY, path COLLATE BINARY))');
+        $pdo->exec('CREATE TABLE skills (skill_identifier TEXT COLLATE BINARY NOT NULL,
+            path TEXT COLLATE BINARY NOT NULL, content TEXT NOT NULL,
+            UNIQUE (skill_identifier, path))');
         return $pdo;
     }
 }

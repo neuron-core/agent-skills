@@ -30,30 +30,20 @@ class DatabaseExampleTest extends TestCase
 
     public function test_setup_populates_a_skill_and_supporting_text_for_public_storage_reads(): void
     {
-        $this->runExample('setup.php');
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://demo/', new PDO('sqlite:'.$this->database)));
+        $this->runExample('sqlite-setup.php');
+        $repository = new SkillRepository(new DatabaseSkillStorage(new PDO('sqlite:'.$this->database)));
 
-        $this->assertSame(['clear-writing'], $repository->names());
-        $skill = $repository->get('db://demo/editorial/');
-        $this->assertSame("---\nname: clear-writing\ndescription: Write clear, concrete prose.\n---\n\nRead references/guide.md before editing a draft.\n", $skill->readDocument());
-        $this->assertSame("# Writing guide\n\nPrefer concrete words and short sentences.\n", $skill->readResource('references/guide.md'));
-    }
-
-    public function test_demo_shows_catalog_and_reads_document_and_resource_without_a_model(): void
-    {
-        $this->runExample('setup.php');
-
-        $output = $this->runExample('demo.php');
-
-        $this->assertStringContainsString('clear-writing: Write clear, concrete prose. (location: db://demo/editorial/)', $output);
-        $this->assertStringContainsString("---\nname: clear-writing\ndescription: Write clear, concrete prose.\n---\n\nRead references/guide.md before editing a draft.\n", $output);
-        $this->assertStringContainsString("# Writing guide\n\nPrefer concrete words and short sentences.\n", $output);
+        $this->assertSame(['dante'], $repository->names());
+        $skill = $repository->get('db://skills/dante/');
+        $this->assertStringContainsString('references/terzina.md', $skill->readDocument());
+        $this->assertStringNotContainsString('lanterna di rame', $skill->readDocument());
+        $this->assertStringContainsString('lanterna di rame', $skill->readResource('references/terzina.md'));
     }
 
     private function runExample(string $script): string
     {
         $process = proc_open(
-            [PHP_BINARY, __DIR__.'/../examples/database/'.$script, $this->database],
+            [PHP_BINARY, __DIR__.'/../examples/'.$script, $this->database],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
         );

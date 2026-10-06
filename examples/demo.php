@@ -7,7 +7,7 @@ use NeuronAI\Chat\Messages\Stream\Chunks\TextChunk;
 use NeuronAI\Chat\Messages\Stream\Chunks\ToolCallChunk;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\Providers\OpenAI\OpenAI;
-use NeuronAI\AgentSkills\SkillRepository;
+use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 use NeuronAI\Tools\Toolkits\FileSystem\BashTool;
@@ -37,31 +37,23 @@ if (!is_string($model) || trim($model) === '') {
     $model = 'gpt-5.4-nano';
 }
 
-$skills = new SkillRepository(
-    // Bundled skills and skills installed by the CLI in examples/.
-    new FileSystemSkillStorage('file://'.__DIR__.'/skills/'),
-    new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
+$skillToolkit = SkillToolkit::make()->fromStorage(
+    new FileSystemSkillStorage(__DIR__.'/skills'),
+    new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
+    new DatabaseSkillStorage(new PDO('sqlite:'.__DIR__.'/skills.sqlite')),
 );
 
 $agent = Agent::make()
     ->setThreadId(bin2hex(random_bytes(16)))
     ->setAiProvider(new OpenAI(key: $key, model: $model))
-    ->addTool(new SkillToolkit($skills))
-    ->addTool(new BashTool());
+    ->addTool(new BashTool())
+    ->addTool($skillToolkit);
 
-echo 'Available skills: '.implode(', ', $skills->names()).PHP_EOL;
-
-foreach ($skills->diagnostics() as $diagnostic) {
-    fwrite(STDERR, sprintf("[skill: %s] %s".PHP_EOL, $diagnostic['skill'], $diagnostic['message']));
-}
-
-echo PHP_EOL;
-echo "Try php-check for runtime checks or caveman for terse answers.".PHP_EOL;
-echo "See examples/README.md for setup and both scenarios.".PHP_EOL.PHP_EOL;
+echo "See examples/README.md for setup and scenarios.".PHP_EOL.PHP_EOL;
 echo "Type a message, or 'exit' to quit.".PHP_EOL;
 
 while (true) {
-    echo "\n> ";
+    echo PHP_EOL."> ";
     $input = fgets(STDIN);
     if ($input === false) {
         break;

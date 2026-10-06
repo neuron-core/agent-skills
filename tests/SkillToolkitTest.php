@@ -166,7 +166,7 @@ class SkillToolkitTest extends TestCase
             foreach ([
                 file_get_contents($directory.'/SKILL.md'),
                 "# Style guide\n\nUse concrete words.\n",
-                'Resource "../secret.md" escapes skill "'.$location.'".',
+                'Resource path "../secret.md" escapes the skill root.',
                 'Resource "secret-link.md" escapes skill "'.$location.'".',
                 'Resource path "file://'.$this->skillsRoot.'/secret.md" is invalid.',
             ] as $expected) {
@@ -303,7 +303,7 @@ class SkillToolkitTest extends TestCase
 
             public function read(string $location, string $path): string
             {
-                $skill = basename($location);
+                $skill = substr($location, strlen('memory://skills/'), -1);
                 if ($path === 'SKILL.md') {
                     return "---\nname: {$skill}\ndescription: {$skill} skill\n---\n{$skill} instructions.";
                 }
@@ -494,7 +494,7 @@ class SkillToolkitTest extends TestCase
 
             public function read(string $location, string $path): string
             {
-                $skill = basename($location);
+                $skill = substr($location, strlen('memory://skills/'), -1);
                 $this->requestedSkill = $skill;
                 $this->requestedPath = $path;
 
@@ -527,7 +527,6 @@ class SkillToolkitTest extends TestCase
 
             public function read(string $location, string $path): string
             {
-                $skill = basename($location);
                 if ($this->reads++ === 0) {
                     return "---\nname: broken\ndescription: Broken skill\n---\nInstructions.";
                 }
@@ -557,7 +556,6 @@ class SkillToolkitTest extends TestCase
 
             public function read(string $location, string $path): string
             {
-                $skill = basename($location);
                 if ($this->reads++ === 0) {
                     return "---\nname: broken\ndescription: Broken skill\n---\nInstructions.";
                 }
@@ -591,7 +589,7 @@ class SkillToolkitTest extends TestCase
 
             public function read(string $location, string $path): string
             {
-                $skill = basename($location);
+                $skill = substr($location, strlen('memory://skills/'), -1);
                 return $path === 'SKILL.md' ? $this->manifests[$skill] : $skill;
             }
         };
@@ -678,7 +676,6 @@ class SkillToolkitTest extends TestCase
 
             public function read(string $location, string $path): string
             {
-                $skill = basename($location);
                 return "---\nname: writing\ndescription: Writing\n---\nBody";
             }
         };
@@ -752,8 +749,8 @@ class SkillToolkitTest extends TestCase
             $location = $repository->catalog()[0]->location();
             $this->assertSame('file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23/', $location);
             // A discovered local file URI is decoded once for the host execution tool.
-            $nativePath = rawurldecode((string) parse_url($location, PHP_URL_PATH));
-            $this->assertSame($directory.'/', $nativePath);
+            $nativePath = rtrim(rawurldecode(substr($location, 7)), '/');
+            $this->assertSame($directory, $nativePath);
             $host = new BashTool();
             $provider = new FakeAIProvider(
                 new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => $location])]),
@@ -782,7 +779,7 @@ class SkillToolkitTest extends TestCase
                             $result = json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR);
                             return $result['status'] === 'success'
                                 && $result['output'] === hash('sha256', $asset)
-                                && $result['working_directory'] === $directory.'/';
+                                && $result['working_directory'] === $directory;
                         }
                     }
                 }

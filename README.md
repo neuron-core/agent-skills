@@ -54,9 +54,8 @@ use NeuronAI\Providers\OpenAI\OpenAI;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
-$projectMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $toolkit = SkillToolkit::make()
-    ->fromStorage(new FileSystemSkillStorage($projectMount.'/.agents/skills/'));
+    ->fromStorage(new FileSystemSkillStorage(__DIR__.'/.agents/skills'));
 
 $agent = Agent::make()
     ->setThreadId('quick-start')
@@ -81,8 +80,10 @@ The agent initially sees each skill's name, description and location. When a
 skill is relevant to the task, it uses `skill` to load its instructions. If those
 instructions reference supporting files, it can read them with `skill_resource`.
 Copy the catalog location verbatim into either tool. Pass resource paths
-separately, relative to the skill root even when found in a supporting document;
-do not compose resource URIs.
+separately as literal paths relative to the skill root, even when found in a
+supporting document. For example, `references/my guide.md` selects that file;
+`references/my%20guide.md` selects a file whose name contains `%20`.
+Do not compose full resource URIs.
 This keeps the initial context small while making the full skill available when
 needed.
 
@@ -96,28 +97,35 @@ The toolkit registers two tools:
 Skills can also include scripts. To execute them, register an execution tool,
 such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
 instructions and resource locations; your application controls execution.
-A `file:///` location is an address, not a native working directory. Validate
-and decode its local path once before using it with an execution tool. Remote
+Decode a local `file:///` location from the current catalog once with
+`rtrim(rawurldecode(substr($location, 7)), '/')` to obtain the native working directory
+for an execution tool. Remote
 locations do not imply that their scripts can be executed.
 
-`FileSystemSkillStorage` accepts local absolute file URIs with an empty host,
-such as `file:///app/skills/`. Other schemes, hosts (including `localhost`),
-queries, fragments, backslashes and malformed percent escapes are rejected.
+`FileSystemSkillStorage` accepts an absolute native directory such as
+`/app/skills/`, or a local absolute file URI with an empty host such as
+`file:///app/skills/`. Relative directories, other schemes, hosts (including `localhost`),
+null bytes and backslashes are rejected. In a `file://` mount, raw `?` and `#`
+are treated as directory characters; the emitted location encodes them.
 Percent-encode spaces, literal `%`, `#` and non-ASCII bytes in path segments:
 `/app/my skills/café%/` becomes `file:///app/my%20skills/caf%C3%A9%25/`.
-The examples encode native paths once while preserving `/` separators.
+The directory must already exist. The constructor resolves it with `realpath()`,
+including any symlinks in the configured root, and uses that absolute path to
+generate file URI locations. Missing directories and regular files are rejected.
 
 Mounts may omit the final slash. Dot segments and redundant separators are
 normalized; discovery emits encoded skill-root addresses ending in `/`, without
 `SKILL.md`. Copy those addresses exactly: alternate URI spellings are not lookup
-aliases. Resource paths are separate native relative paths, so a resource named
-`notes%20.md` is requested as `notes%20.md`, without URI decoding. Parent segments
-are allowed when the resolved target remains inside the selected skill.
+aliases. Resource paths are literal: a file named `notes%20.md` is requested as
+`notes%20.md`, while `notes .md` selects the file with a space. Dot and parent
+segments are normalized relative to the skill root. Paths escaping that root
+are rejected.
 
 A skill directory may be a symlink, including one pointing outside the storage
 root. Its public location stays under the configured mount, while its canonical
 native directory defines the resource boundary. Resource symlinks inside that
-boundary work; links and paths escaping it fail. Reads return UTF-8 text only.
+boundary work; links and paths escaping it fail. Reads return the file bytes as a
+PHP string.
 
 ## Multiple Skill Directories
 
@@ -126,11 +134,10 @@ as separate sources. For example, combine bundled skills
 with skills installed by the CLI:
 
 ```php
-$projectMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $toolkit = SkillToolkit::make()
     ->fromStorage(
-        new FileSystemSkillStorage($projectMount.'/skills/'),
-        new FileSystemSkillStorage($projectMount.'/.agents/skills/'),
+        new FileSystemSkillStorage(__DIR__.'/skills'),
+        new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
     );
 ```
 
@@ -147,9 +154,9 @@ adapter. Invalid or unreadable documents do not hide location conflicts.
 Overlapping mount roots are allowed when their discovered skill locations are
 distinct: selection uses the exact catalog address, without prefix precedence.
 
-Restart the agent or recreate the toolkit after adding skills to an existing
-directory: each storage is discovered on first access and its catalog is then
-reused.
+`FileSystemSkillStorage::list()` reads the directory when called. The repository
+retains its catalog after first access, so restart the agent or recreate the
+toolkit to include newly added skills there.
 
 ## Accessing Skills Directly
 
@@ -163,9 +170,8 @@ use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
-$projectMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $skills = new SkillRepository(
-    new FileSystemSkillStorage($projectMount.'/.agents/skills/'),
+    new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
 );
 $agent->addTool(new SkillToolkit($skills));
 
@@ -173,7 +179,7 @@ foreach ($skills->catalog() as $skill) {
     echo $skill->name().': '.$skill->description().' ('.$skill->location().')';
 }
 
-$skill = $skills->get($projectMount.'/.agents/skills/caveman/');
+$skill = $skills->catalog()[0];
 $frontmatter = $skill->readFrontmatter();   // Parsed YAML metadata as stdClass.
 $instructions = $skill->readInstructions(); // Body without YAML frontmatter.
 $document = $skill->readDocument();         // Complete original SKILL.md.
@@ -192,7 +198,7 @@ Implement [`SkillStorageInterface`](src/Storage/SkillStorageInterface.php) to
 load skills from another backend. It defines two methods:
 
 - `list()` returns complete canonical skill-root locations, with a trailing slash.
-- `read($location, $path)` reads UTF-8 text relative to the selected skill root.
+- `read($location, $path)` reads content as a PHP string from a literal path relative to a catalog location.
 
 Configure each adapter with its complete mount point as the first constructor
 argument and backend dependencies separately. The adapter validates the mount,
@@ -203,21 +209,15 @@ Throw `RuntimeException` for expected read failures, such as missing or
 unreadable resources. Empty text is valid. Reads must remain confined to the
 selected skill, without falling back to another source.
 
-Adapters whose resource keys are slash-separated relative paths can reuse
-[`ResourcePath::normalize()`](src/Storage/ResourcePath.php):
+[`ResourceLocator`](src/ResourceLocator.php) creates canonical skill-root
+locations and validates each location and literal resource path under one mount.
+Both storage adapters use it internally. The filesystem adapter converts its
+local directory to a `file:///` base URI.
 
-```php
-use NeuronAI\AgentSkills\Storage\ResourcePath;
-
-$path = ResourcePath::normalize('./references/../guide.md'); // guide.md
-```
-
-It resolves `.` and `..`, collapses repeated separators, and throws
-`RuntimeException` for empty paths, absolute selectors, backslashes, NUL bytes,
-root escapes or paths naming the root itself. Percent characters remain literal;
-it does not access the filesystem or decode URIs. Filesystem adapters still need
-`realpath()` and containment checks: resolving symlinks can change the meaning of
-`..`, so string normalization must not replace filesystem resolution.
+`Skill::readResource($path)` passes a literal path and the selected skill location
+to its storage. Each storage validates the location and normalizes the path;
+database storage looks up the normalized row key, while filesystem storage also
+uses `realpath()` to resolve symlinks and keep the file inside the selected skill.
 
 ## Database Storage
 
@@ -230,15 +230,15 @@ use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
 $pdo = new PDO('sqlite:'.__DIR__.'/skills.sqlite');
-$toolkit = SkillToolkit::make()->fromStorage(
-    new DatabaseSkillStorage('db://team/', $pdo),
-);
-// Optional third argument: a different table in the same connection.
-$archive = new DatabaseSkillStorage('db://archive/', $pdo, 'archived_skills');
+$toolkit = SkillToolkit::make()->fromStorage(new DatabaseSkillStorage($pdo));
+// Set a different base URI when several database storages share a toolkit.
+$archive = new DatabaseSkillStorage($pdo, table: 'archived_skills', baseUri: 'db://archive/');
 ```
 
-The constructor takes the complete mount, the application's PDO connection and
-an optional table name (default: `skills`). Mounts use `db://label/` with optional
+The constructor takes the application's PDO connection, an optional base URI
+(default: `db://skills/`) and an optional table name (default: `skills`). PDO query results must expose the
+lowercase column names `skill_identifier`, `path` and `content`.
+Mounts use `db://label/` with optional
 nested segments, for example `db://team/project/`. Labels and segments contain
 lowercase ASCII letters, digits or hyphens; a trailing slash is required.
 Credentials, ports, queries, fragments and dot segments are not accepted.
@@ -250,40 +250,39 @@ The application creates and populates the table. For example, in SQLite:
 
 ```sql
 CREATE TABLE skills (
-    skill_name TEXT NOT NULL,
+    skill_identifier TEXT NOT NULL,
     path TEXT NOT NULL,
     content TEXT NOT NULL,
-    UNIQUE (skill_name, path)
+    UNIQUE (skill_identifier, path)
 );
 ```
 
-Each row contains one UTF-8 text resource. Store the complete skill document at
-`SKILL.md` and resources at normalized, slash-separated relative paths such as
-`references/guide.md`. Empty content is valid. Binary content is unsupported.
-The application owns schema, uniqueness constraints and updates; the adapter
-only reads and reports missing tables without creating them. Configure the
-schema to preserve distinct identifier and path spellings, including case, when
-enforcing uniqueness. The adapter must select the exact stored spelling even
-when database comparison defaults are case-insensitive. In SQLite, the example
-above uses the default `BINARY` collation. If your columns use `COLLATE NOCASE`,
-define the uniqueness constraint with
-`UNIQUE (skill_name COLLATE BINARY, path COLLATE BINARY)` so that `caveman` and
-`Caveman`, or `guide.md` and `Guide.md`, can coexist. Use the equivalent exact
-uniqueness rule for your database; the adapter cannot recover rows that the schema
-prevents you from storing. Requests preserve capitalization: `Guide.md` never
-reads `guide.md`.
+When updating an existing application-owned table from the earlier schema,
+rename `skill_name` to `skill_identifier` before using this adapter. The library
+does not migrate tables automatically.
 
-`skill_name` is a non-empty string backend identifier; it may differ from the
+Each row contains one resource. Store the complete UTF-8 skill document at
+`SKILL.md` and resources at normalized, slash-separated relative paths such as
+`references/guide.md`. Empty content is valid. The database adapter returns the
+fetched `content` value directly, without checking its encoding or binary bytes.
+The application owns schema, uniqueness constraints and updates; the adapter
+only reads and reports missing tables without creating them. The schema must
+compare both `skill_identifier` and `path` exactly in queries and uniqueness
+constraints. For example, `caveman` and `Caveman`, or `guide.md` and `Guide.md`,
+must remain distinct. SQLite's default `BINARY` collation meets this requirement;
+configure equivalent comparisons in other databases. The adapter relies on the
+database comparison and returns the row selected by the query.
+
+`skill_identifier` is a non-empty, single-segment backend identifier; it may differ from the
 declared document name. An empty identifier causes discovery to fail with a
 `RuntimeException`. With mount `db://team/`, identifier `team caveman` is discovered at
 `db://team/team%20caveman/`. Identifier `literal%20name` becomes
 `db://team/literal%2520name/`, and `café` becomes `db://team/caf%C3%A9/`.
-The identifiers `.` and `..` become `db://team/%2E/` and `db://team/%2E%2E/`,
-so their locations contain no literal dot segments.
 Copy the catalog location verbatim into the tools and pass `references/guide.md`
-as a separate path. Paths are native text, so literal
-percent characters are not URI-decoded. Confined dot and parent segments work;
-absolute paths and paths escaping the selected skill fail.
+as a separate literal relative path. Database `path` values remain literal names:
+`references/my%20guide.md` in a call selects that exact stored key.
+Confined dot and parent segments work; absolute paths and paths escaping the
+selected skill fail.
 
 The mount labels every skill in the selected table. Two mounts over the same
 connection and table expose the same rows under different locations. Use separate
@@ -295,7 +294,7 @@ For example, register both adapters on the same toolkit:
 ```php
 $toolkit = SkillToolkit::make()->fromStorage(
     new FileSystemSkillStorage('file:///app/skills/'),
-    new DatabaseSkillStorage('db://team/', $pdo),
+    new DatabaseSkillStorage($pdo, baseUri: 'db://team/'),
 );
 ```
 
@@ -308,10 +307,11 @@ Catalog metadata is discovered lazily and retained by the repository. Documents
 and supporting resources are read on demand; recreate the repository to discover
 new skills or update catalog metadata. Updated text is visible on the next read;
 deleted documents and resources fail even while their catalog metadata remains.
-PDO connection settings are preserved. The required `content TEXT NOT NULL`
-contract lets the adapter read empty text even when `PDO::NULL_EMPTY_STRING`
-converts it to null during fetching. Expected
-access failures are `RuntimeException` for PHP callers and readable tool results.
+PDO connection settings are preserved. The adapter expects PDO's default
+`PDO::ERRMODE_EXCEPTION` error mode and `content` fetched as a string; settings
+that convert empty strings to `null` are not supported.
+Expected access failures are `RuntimeException` for PHP callers and readable
+tool results.
 
 ## Error Handling
 
@@ -341,6 +341,19 @@ composer check
 `composer check` runs PHPUnit and PHPStan without requiring an API key.
 Development requires PDO and `pdo_sqlite` for the real in-memory SQLite tests.
 CI covers PHP 8.1–8.5, multiple Neuron AI versions and Symfony YAML compatibility.
+
+## Resource path migration
+
+`Skill::readResource()` and `skill_resource` accept literal paths. Pass
+`my guide.md` for a filename with a space, or `notes%20.md` for a filename
+containing those exact characters.
+If a caller previously passed URI-encoded resource paths, it must now pass the
+decoded filename. Stored filenames and database rows do not change.
+
+Custom storage implementations receive the catalog location and a literal resource
+path in `read($location, $path)`. They must validate and confine both values before
+backend lookup.
+
 
 ## License
 

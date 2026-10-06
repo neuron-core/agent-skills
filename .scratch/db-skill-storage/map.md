@@ -18,8 +18,8 @@ Implemented on `integration/db-skill-storage` and delivered in
 - Target a generic PDO adapter across database drivers, rather than restricting
   the adapter to SQLite. Use portable SQL for discovery and reads; the initial
   automated verification uses SQLite.
-- Store skill documents and resources in one table with `skill_name`, `path`
-  and `content`, uniquely identified by `(skill_name, path)`. `SKILL.md` is a
+- Store skill documents and resources in one table with `skill_identifier`, `path`
+  and `content`, uniquely identified by `(skill_identifier, path)`. `SKILL.md` is a
   resource row in the same table.
 - The application owns schema creation and population. The adapter receives an
   existing PDO connection and performs discovery and reads only.
@@ -40,7 +40,7 @@ Implemented on `integration/db-skill-storage` and delivered in
   return a different identifier or path.
 - Preserve the existing resource contract: paths are relative to the selected
   skill root, confined parent segments are allowed, absolute selectors and
-  effective root escapes are rejected, and resources are UTF-8 text.
+  effective root escapes are rejected, and resources are returned as PHP strings.
 - Preserve the existing repository lifecycle: catalog metadata is discovered
   lazily and cached; document and resource contents are read on demand. Declared
   skill names remain metadata rather than backend lookup keys.

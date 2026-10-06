@@ -6,24 +6,27 @@ namespace NeuronAI\AgentSkills\Tests\Fixtures;
 
 use InvalidArgumentException;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
+use NeuronAI\AgentSkills\ResourceLocator;
 use RuntimeException;
 
-/** In-memory equivalent of UNIQUE(skill_name, path) in a single resource table. */
+/** In-memory equivalent of UNIQUE(skill_identifier, path) in a single resource table. */
 class TableSkillStorage implements SkillStorageInterface
 {
     /** @var array<string, array<string, string>> */
     private array $resources = [];
+    private ResourceLocator $resourceLocator;
 
-    /** @param list<array{skill_name: string, path: string, content: string}> $rows */
+    /** @param list<array{skill_identifier: string, path: string, content: string}> $rows */
     public function __construct(string $mount, array $rows)
     {
         if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $mount) !== 1) {
             throw new InvalidArgumentException('Expected a complete db:// mount ending in a slash.');
         }
+        $this->resourceLocator = new ResourceLocator($mount);
         foreach ($rows as $row) {
-            $location = $mount.rawurlencode($row['skill_name']).'/';
+            $location = $this->resourceLocator->fromSkillIdentifier($row['skill_identifier']);
             if (isset($this->resources[$location][$row['path']])) {
-                throw new InvalidArgumentException('Duplicate skill_name and path.');
+                throw new InvalidArgumentException('Duplicate skill_identifier and path.');
             }
             $this->resources[$location][$row['path']] = $row['content'];
         }
@@ -36,7 +39,9 @@ class TableSkillStorage implements SkillStorageInterface
 
     public function read(string $location, string $path): string
     {
-        return $this->resources[$location][$path]
-            ?? throw new RuntimeException(sprintf('Database resource "%s" is unavailable in "%s".', $path, $location));
+        $resource = $this->resourceLocator->resolve($location, $path);
+
+        return $this->resources[$location][$resource->path]
+            ?? throw new RuntimeException(sprintf('Database resource "%s" is unavailable in "%s".', $resource->path, $location));
     }
 }

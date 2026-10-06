@@ -43,6 +43,7 @@ class SkillToolkit extends AbstractToolkit
             .' If the instructions require a supporting text file, read it with `skill_resource` before continuing.'
             .' Copy the catalog location into the location argument of both tools.'
             .' Pass supporting resource paths separately in path, always relative to the skill root, including references found in supporting documents.'
+            .' Pass the literal path as written: references/my guide.md names that file, and percent signs remain literal.'
             .' Do not compose full resource URIs.'
             .' `skill` and `skill_resource` only read text.'
             .' When a skill requires a script, use an available execution tool only if the skill is accessible to it.'

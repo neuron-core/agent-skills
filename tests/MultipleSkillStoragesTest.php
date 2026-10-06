@@ -68,13 +68,13 @@ class MultipleSkillStoragesTest extends TestCase
         $localLocation = 'file://'.$this->root.'/project/caveman/';
         $databaseLocation = 'db://team/team%20caveman/';
         $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_name, path))');
+        $pdo->exec('CREATE TABLE skills (skill_identifier TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_identifier, path))');
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['team caveman', 'SKILL.md', $databaseDocument]);
         $insert->execute(['team caveman', 'references/guide.md', 'Database guide.']);
         $repository = new SkillRepository(
             new FileSystemSkillStorage('file://'.$this->root.'/project/'),
-            new DatabaseSkillStorage('db://team/', $pdo),
+            new DatabaseSkillStorage($pdo, baseUri: 'db://team/'),
         );
         mkdir($this->root.'/project/caveman/references');
         file_put_contents($this->root.'/project/caveman/references/guide.md', 'Local guide.');
@@ -133,10 +133,10 @@ class MultipleSkillStoragesTest extends TestCase
         $inner = "---\nname: shared\ndescription: Inner\n---\nInner document";
         $toolkit = SkillToolkit::make()->fromStorage(
             new TableSkillStorage('db://team/', [
-                ['skill_name' => 'nested', 'path' => 'SKILL.md', 'content' => $outer],
+                ['skill_identifier' => 'nested', 'path' => 'SKILL.md', 'content' => $outer],
             ]),
             new TableSkillStorage('db://team/nested/', [
-                ['skill_name' => 'child', 'path' => 'SKILL.md', 'content' => $inner],
+                ['skill_identifier' => 'child', 'path' => 'SKILL.md', 'content' => $inner],
             ]),
         );
         [$activation] = $toolkit->tools();
@@ -150,7 +150,7 @@ class MultipleSkillStoragesTest extends TestCase
     public function test_toolkit_discovery_rejects_duplicate_locations_as_configuration_errors(): void
     {
         $storage = new TableSkillStorage('db://team/', [
-            ['skill_name' => 'caveman', 'path' => 'SKILL.md', 'content' => "---\nname: caveman\ndescription: Caveman\n---\nBody"],
+            ['skill_identifier' => 'caveman', 'path' => 'SKILL.md', 'content' => "---\nname: caveman\ndescription: Caveman\n---\nBody"],
         ]);
         $toolkit = SkillToolkit::make()->fromStorage($storage, $storage);
         $this->expectException(RuntimeException::class);
@@ -352,9 +352,9 @@ class TrackedSkillStorage implements SkillStorageInterface
         return array_map(fn (string $name): string => $this->mount.$name.'/', array_keys($this->documents));
     }
 
-    public function read(string $skill, string $path): string
+    public function read(string $location, string $path): string
     {
-        $skill = basename($skill);
+        $skill = substr($location, strlen($this->mount), -1);
         $this->reads[] = $skill.'/'.$path;
         if ($path !== 'SKILL.md') {
             return $skill.'/'.$path;
