@@ -31,7 +31,8 @@ The startup list should include `php-check` and `caveman`.
 
 ## Try this conversation
 
-This example shows an actual conversation; wording, paths and results can vary on your machine.
+This example illustrates a conversation with location-based tool inputs;
+wording, paths and results can vary on your machine.
 
 ```text
 $ php agent-loop.php
@@ -44,7 +45,7 @@ Type a message, or 'exit' to quit.
 
 > use caveman skill to explain the universe
 
-[tool: skill {"name":"caveman"}]
+[tool: skill {"location":"file:///app/examples/.agents/skills/caveman/"}]
 
 Universe explain: space-time is a dynamical stage; matter/energy tells it how to curve; curvature tells matter/energy how to move.
 
@@ -65,11 +66,11 @@ Good.
 
 > now use php-check skill and explain the results
 
-[tool: skill {"name":"php-check"}]
+[tool: skill {"location":"file:///app/examples/skills/php-check/"}]
 
-[tool: skill_resource {"name":"php-check","path":"references/checks.md"}]
+[tool: skill_resource {"location":"file:///app/examples/skills/php-check/","path":"references/checks.md"}]
 
-[tool: bash {"command":"php scripts/check.php","working_directory":"/home/asterix/neuron-core/agent-skills/examples/skills/php-check"}]
+[tool: bash {"command":"php scripts/check.php","working_directory":"/app/examples/skills/php-check"}]
 
 PHP-check results (facts about *this* PHP CLI run):
 
@@ -95,7 +96,9 @@ ok
 ```
 
 `skill` loads the instructions, `skill_resource` reads the reference, and `bash`
-executes the bundled script. Its output contains `PHP_VERSION`, `CURL_EXTENSION`,
+executes the bundled script. The tools copy the complete catalog location and
+pass resource paths separately. The execution tool uses the decoded native local
+path as its working directory, not the `file:///` URI. Its output contains `PHP_VERSION`, `CURL_EXTENSION`,
 `JSON_EXTENSION` and `PROC_OPEN`; the agent explains any failed checks.
 
 Type `exit` or `quit` to stop. Restart the script after installing new skills.

@@ -38,9 +38,9 @@ if (!is_string($model) || trim($model) === '') {
 }
 
 $skills = new SkillRepository(
-    // Bundled skills first; skills installed by the CLI in examples/ second.
-    new FileSystemSkillStorage(__DIR__.'/skills'),
-    new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
+    // Bundled skills and skills installed by the CLI in examples/.
+    new FileSystemSkillStorage('file://'.__DIR__.'/skills/'),
+    new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
 );
 
 $agent = Agent::make()
