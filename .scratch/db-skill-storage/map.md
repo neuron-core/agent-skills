@@ -2,10 +2,9 @@
 
 ## Notes
 
-Design confirmed and published in [the specification](spec.md), with
-`ready-for-agent` status. The `feature/pdo-skill-storage` branch has been prepared
-from `integration/skill-locations` (PR #10), which must also be the new PR's base.
-No adapter implementation or new PR has been created.
+Implemented on `integration/db-skill-storage` and delivered in
+[PR #11](https://github.com/neuron-core/agent-skills/pull/11), based on
+`integration/skill-locations` (PR #10). All three tickets are resolved.
 
 ## Decisions-so-far
 
@@ -49,6 +48,15 @@ No adapter implementation or new PR has been created.
 
 - [Ticket 01](issues/01-load-database-skills.md) resolved: public PDO storage,
   real SQLite toolkit tests, failure handling and CI support (`3856209`).
+
+- [Ticket 02](issues/02-preserve-exact-source-identity.md) resolved: exact
+  database identity, encoded locations, source isolation and lifecycle coverage
+  (`ce202ec`), with review corrections in `f833594`.
+- [Ticket 03](issues/03-add-sqlite-example.md) resolved: standalone SQLite setup
+  and credential-free toolkit example, verified automatically (`4c51367`).
+- Final verification: 202 tests / 640 assertions, clean PHPStan and valid
+  Composer configuration. Standards and specification reviews have no
+  outstanding findings after the corrections.
 
 ## Fog
 

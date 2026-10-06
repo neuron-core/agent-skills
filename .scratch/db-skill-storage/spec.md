@@ -1,6 +1,6 @@
 # Read skill documents and resources through PDO storage
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -112,3 +112,15 @@ This feature extends the exact-location implementation and the architectural dec
 The new PR must be stacked on PR #10, with integration/skill-locations as its actual base. A feature/pdo-skill-storage branch has already been prepared, but no database adapter implementation or new PR has been created. Publishing this specification does not authorize starting implementation in this turn.
 
 PDO and its SQLite driver have been installed and verified in the local system PHP. Use that runtime for future implementation checks; no temporary extension-loading setup is needed.
+
+## Answer
+
+Implemented by tickets [01](issues/01-load-database-skills.md),
+[02](issues/02-preserve-exact-source-identity.md) and
+[03](issues/03-add-sqlite-example.md) on `integration/db-skill-storage`.
+[PR #11](https://github.com/neuron-core/agent-skills/pull/11) targets
+`integration/skill-locations`, the branch of PR #10.
+
+Final `composer check`: 202 tests, 640 assertions and no PHPStan errors.
+Composer validates strictly. Standards and spec review findings were resolved
+in `751360a`; original filesystem example skill documents remain unchanged.
