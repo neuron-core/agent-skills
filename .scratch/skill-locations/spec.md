@@ -1,6 +1,6 @@
 # Address skills by exact location and read resources by relative path
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -98,4 +98,16 @@ The competing alternatives were a single full-document-URI reader and opening a 
 
 Low-level URI normalization details remain implementation work within the stated invariants: adapters issue canonical addresses, callers copy them, repository lookup is exact, and backend reads remain confined. Document the supported filesystem URI form and cover its round-trip behavior in tests; do not introduce a general multi-scheme URI framework for this feature.
 
-The specification is published in the local Markdown tracker with ready-for-agent status. Feature implementation and release publication have not been performed.
+The specification is implemented on `integration/skill-locations`. Release publication is outside this work.
+
+## Answer
+
+Tickets 01–03 are resolved. Exact-location selection, source isolation and
+duplicate rejection, encoded filesystem locations, confined reads and native
+local execution are implemented and documented. The bundled example skill
+document remains unchanged, as requested.
+
+Final validation: `composer check` passes with 145 tests, 475 assertions and no
+PHPStan errors. Separate Standards and Spec reviews of the implementation found
+no issues. See [the implementation map](map.md) and
+[PR #10](https://github.com/neuron-core/agent-skills/pull/10).
