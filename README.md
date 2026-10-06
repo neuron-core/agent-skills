@@ -203,6 +203,22 @@ Throw `RuntimeException` for expected read failures, such as missing or
 unreadable resources. Empty text is valid. Reads must remain confined to the
 selected skill, without falling back to another source.
 
+Adapters whose resource keys are slash-separated relative paths can reuse
+[`ResourcePath::normalize()`](src/Storage/ResourcePath.php):
+
+```php
+use NeuronAI\AgentSkills\Storage\ResourcePath;
+
+$path = ResourcePath::normalize('./references/../guide.md'); // guide.md
+```
+
+It resolves `.` and `..`, collapses repeated separators, and throws
+`RuntimeException` for empty paths, absolute selectors, backslashes, NUL bytes,
+root escapes or paths naming the root itself. Percent characters remain literal;
+it does not access the filesystem or decode URIs. Filesystem adapters still need
+`realpath()` and containment checks: resolving symlinks can change the meaning of
+`..`, so string normalization must not replace filesystem resolution.
+
 ## Database Storage
 
 `DatabaseSkillStorage` reads from an existing PDO connection. Install PHP's PDO

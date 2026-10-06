@@ -40,7 +40,7 @@ class DatabaseSkillStorage implements SkillStorageInterface
             || $location !== $this->location($skill)) {
             throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
         }
-        $path = $this->relativePath($path);
+        $path = ResourcePath::normalize($path);
         // SQL narrows candidates; exact identity must not depend on database collation.
         $rows = array_values(array_filter(
             $this->select('SELECT skill_name, path, content FROM '.$this->table.' WHERE skill_name = ? AND path = ?', [$skill, $path]),
@@ -88,31 +88,5 @@ class DatabaseSkillStorage implements SkillStorageInterface
         } catch (PDOException $exception) {
             throw new RuntimeException($message, 0, $exception);
         }
-    }
-
-    private function relativePath(string $path): string
-    {
-        if ($path === '' || str_contains($path, "\0") || str_contains($path, '\\')
-            || str_starts_with($path, '/') || preg_match('/^[a-zA-Z][a-zA-Z0-9+.-]*:/', $path) === 1) {
-            throw new RuntimeException(sprintf('Resource path "%s" is invalid.', $path));
-        }
-        $segments = [];
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || $segment === '.') {
-                continue;
-            }
-            if ($segment === '..') {
-                if ($segments === []) {
-                    throw new RuntimeException(sprintf('Resource path "%s" escapes the skill root.', $path));
-                }
-                array_pop($segments);
-            } else {
-                $segments[] = $segment;
-            }
-        }
-        if ($segments === []) {
-            throw new RuntimeException(sprintf('Resource path "%s" is invalid.', $path));
-        }
-        return implode('/', $segments);
     }
 }
