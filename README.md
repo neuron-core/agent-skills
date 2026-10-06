@@ -17,7 +17,7 @@ make them available to the agent through a single toolkit.
 The library handles skill discovery and provides tools for loading instructions
 and supporting resources when needed. It follows the open
 [Agent Skills specification](https://agentskills.io/specification) and supports
-local directories as well as custom storage.
+local directories, PDO databases and custom storage.
 
 ![Neuron Agent Skills Package](docs/cover.png)
 
@@ -203,24 +203,70 @@ Throw `RuntimeException` for expected read failures, such as missing or
 unreadable resources. Empty text is valid. Reads must remain confined to the
 selected skill, without falling back to another source.
 
-For example, a database adapter can use one table with `skill_name`, `path` and
-`content`, constrained by `UNIQUE(skill_name, path)`:
+## Database Storage
 
-| skill_name | path | content |
-| --- | --- | --- |
-| team caveman | SKILL.md | A complete document declaring `name: caveman`. |
-| team caveman | references/guide.md | The database skill's guide text. |
+`DatabaseSkillStorage` reads from an existing PDO connection. Install PHP's PDO
+extension and the driver for your database (`pdo_sqlite` for SQLite). The adapter
+uses portable SQL; automated integration tests currently verify SQLite.
 
-With mount `db://team/`, the adapter can expose
-`db://team/team%20caveman/` and translate it back to `team caveman` for reads.
-The declared name `caveman` can also appear in a local skill at
-`file:///app/skills/caveman/`; both remain visible and independently selectable.
-The model passes the database location and `references/guide.md` separately.
-If the database row is absent, that read fails without consulting the local
-skill. See the [in-memory table fixture](tests/Fixtures/TableSkillStorage.php)
-and [multi-storage integration tests](tests/MultipleSkillStoragesTest.php) for a
-service-free illustration; this library does not provide a production database
-adapter.
+```php
+use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
+use NeuronAI\AgentSkills\Tools\SkillToolkit;
+
+$pdo = new PDO('sqlite:'.__DIR__.'/skills.sqlite');
+$toolkit = SkillToolkit::make()->fromStorage(
+    new DatabaseSkillStorage('db://team/', $pdo),
+);
+// Optional third argument: a different table in the same connection.
+$archive = new DatabaseSkillStorage('db://archive/', $pdo, 'archived_skills');
+```
+
+The constructor takes the complete mount, the application's PDO connection and
+an optional table name (default: `skills`). Mounts use `db://label/` with optional
+nested segments, for example `db://team/project/`. Labels and segments contain
+lowercase ASCII letters, digits or hyphens; a trailing slash is required.
+Credentials, ports, queries, fragments and dot segments are not accepted.
+Table names must be simple unqualified SQL identifiers: a letter or underscore,
+followed by letters, digits or underscores. Choose a name that is not a reserved
+word in your database.
+
+The application creates and populates the table. For example, in SQLite:
+
+```sql
+CREATE TABLE skills (
+    skill_name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    content TEXT NOT NULL,
+    UNIQUE (skill_name, path)
+);
+```
+
+Each row contains one UTF-8 text resource. Store the complete skill document at
+`SKILL.md` and resources at normalized, slash-separated relative paths such as
+`references/guide.md`. Empty content is valid. Binary content is unsupported.
+The application owns schema, uniqueness constraints and updates; the adapter
+only reads and reports missing tables without creating them. Configure the
+schema to preserve distinct identifier and path spellings, including case, when
+enforcing uniqueness. The adapter must select the exact stored spelling even
+when database comparison defaults are case-insensitive.
+
+`skill_name` is a backend identifier; it may differ from the declared document
+name. With mount `db://team/`, identifier `team caveman` is discovered at
+`db://team/team%20caveman/`. Copy the catalog location verbatim into the tools and
+pass `references/guide.md` as a separate path. Paths are native text, so literal
+percent characters are not URI-decoded. Confined dot and parent segments work;
+absolute paths and paths escaping the selected skill fail.
+
+The mount labels every skill in the selected table. Two mounts over the same
+connection and table expose the same rows under different locations. Use separate
+tables or databases for data isolation; the mount does not filter tenants. A
+filesystem skill with the same declared name remains independently selectable,
+and a missing database resource never falls back to that filesystem skill.
+
+Catalog metadata is discovered lazily and retained by the repository. Documents
+and supporting resources are read on demand; recreate the repository to discover
+new skills or update catalog metadata. PDO error modes are preserved. Expected
+access failures are `RuntimeException` for PHP callers and readable tool results.
 
 ## Error Handling
 
@@ -248,6 +294,7 @@ composer check
 ```
 
 `composer check` runs PHPUnit and PHPStan without requiring an API key.
+Development requires PDO and `pdo_sqlite` for the real in-memory SQLite tests.
 CI covers PHP 8.1–8.5, multiple Neuron AI versions and Symfony YAML compatibility.
 
 ## License
