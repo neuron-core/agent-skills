@@ -4,89 +4,78 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Storage;
 
+use NeuronAI\AgentSkills\ResourceLocator;
+
 use PDO;
 use PDOException;
+use PDOStatement;
 use RuntimeException;
 
-/** Read-only storage over application-owned rows identified by (skill_name, path). */
+/** Read-only storage over application-owned rows identified by (skill_identifier, path). */
 class DatabaseSkillStorage implements SkillStorageInterface
 {
-    public function __construct(private string $mount, private PDO $pdo, private string $table = 'skills')
-    {
-        if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $mount) !== 1) {
-            throw new RuntimeException('Skill mount must be a complete db:// mount ending in a slash.');
-        }
+    private ResourceLocator $resourceLocator;
+
+    public function __construct(
+        private PDO $pdo,
+        private string $table = 'skills',
+        string $baseUri = 'db://skills/'
+    ) {
         if (preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $table) !== 1) {
             throw new RuntimeException('Skill table must be a simple SQL identifier.');
         }
+
+        if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $baseUri) !== 1) {
+            throw new RuntimeException('Skill base URI must be a complete db:// URI ending in a slash.');
+        }
+
+        $this->resourceLocator = new ResourceLocator($baseUri);
     }
 
     public function list(): array
     {
         $locations = [];
-        foreach ($this->select('SELECT skill_name FROM '.$this->table) as $row) {
-            if (!is_string($row[0]) || $row[0] === '') {
-                throw new RuntimeException('Skill identifiers must be non-empty strings.');
-            }
-            $locations[$this->location($row[0])] = true;
+
+        try {
+            /** @var PDOStatement $statement */
+            $statement = $this->pdo->query('SELECT skill_identifier FROM '.$this->table);
+            $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $exception) {
+            throw new RuntimeException(
+                sprintf('Database skill table "%s" could not be read.', $this->table),
+                previous: $exception
+            );
         }
+
+        foreach ($rows as $row) {
+            $location = $this->resourceLocator->fromSkillIdentifier($row['skill_identifier']);
+            $locations[$location] = true;
+        }
+
         return array_keys($locations);
     }
 
     public function read(string $location, string $path): string
     {
-        $skill = rawurldecode(substr($location, strlen($this->mount), -1));
-        if (!str_starts_with($location, $this->mount) || $skill === ''
-            || $location !== $this->location($skill)) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
-        }
-        $path = ResourcePath::normalize($path);
-        // SQL narrows candidates; exact identity must not depend on database collation.
-        $rows = array_values(array_filter(
-            $this->select('SELECT skill_name, path, content FROM '.$this->table.' WHERE skill_name = ? AND path = ?', [$skill, $path]),
-            static fn (array $row): bool => $row[0] === $skill && $row[1] === $path,
-        ));
-        if ($rows === []) {
-            throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $path, $location));
-        }
-        // The schema requires NOT NULL; PDO::NULL_EMPTY_STRING can still fetch empty text as null.
-        $content = $rows[0][2] ?? '';
-        if (!is_string($content) || str_contains($content, "\0") || preg_match('//u', $content) !== 1) {
-            throw new RuntimeException(sprintf('Resource "%s" in skill "%s" contains unsupported binary content.', $path, $location));
-        }
-        return $content;
-    }
+        $resource = $this->resourceLocator->resolve($location, $path);
 
-    private function location(string $skill): string
-    {
-        $identifier = match ($skill) {
-            '.' => '%2E',
-            '..' => '%2E%2E',
-            default => rawurlencode($skill),
-        };
-        return $this->mount.$identifier.'/';
-    }
-
-    /**
-     * @param list<string> $parameters
-     * @return list<list<mixed>>
-     */
-    private function select(string $sql, array $parameters = []): array
-    {
-        $message = sprintf('Database skill table "%s" could not be read.', $this->table);
         try {
-            // Preserve the caller's PDO error mode, translating both false returns and exceptions.
-            $statement = @$this->pdo->prepare($sql);
-            if ($statement === false || !@$statement->execute($parameters)) {
-                throw new RuntimeException($message);
-            }
-            $rows = @$statement->fetchAll(PDO::FETCH_NUM);
-            if ($statement->errorCode() !== '00000') {
-                throw new RuntimeException($message);
-            }
-            return $rows;
+            $sql = 'SELECT content FROM '.$this->table.' WHERE skill_identifier = ? AND path = ?';
+            /** @var PDOStatement $statement */
+            $statement = $this->pdo->prepare($sql);
+            $statement->execute([$resource->skillIdentifier, $resource->path]);
+            $content = $statement->fetchColumn();
         } catch (PDOException $exception) {
-            throw new RuntimeException($message, 0, $exception);
+            throw new RuntimeException(
+                sprintf('Database skill table "%s" could not be read.', $this->table),
+                previous: $exception
+            );
         }
+
+        if ($content === false) {
+            throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $resource->path, $location));
+        }
+
+        return $content;
     }
 }

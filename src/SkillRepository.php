@@ -124,12 +124,18 @@ class SkillRepository
             foreach ($parsed['warnings'] as $message) {
                 $this->diagnostics[] = ['skill' => $skill, 'message' => $message];
             }
+
             $document = $parsed['document'];
             if ($document === null) {
                 continue;
             }
-            $name = $document['name'];
-            $this->catalog[$skill] = new Skill($name, $document['description'], $storage, $skill);
+
+            $this->catalog[$skill] = new Skill(
+                $document['name'],
+                $document['description'],
+                $storage,
+                $skill
+            );
         }
     }
 }

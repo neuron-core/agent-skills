@@ -7,7 +7,7 @@
 **Status:** resolved
 
 - [x] Add a database example separate from the existing filesystem example. Preserve the existing example skill documents and retain the filesystem example's behavior.
-- [x] Provide application-side SQLite setup that creates and populates the skills table with skill_name, path and content and uniqueness on the pair of skill_name and path. Store SKILL.md and supporting resources as rows of the same table.
+- [x] Provide application-side SQLite setup that creates and populates the skills table with skill_identifier, path and content and uniqueness on the pair of skill_identifier and path. Store SKILL.md and supporting resources as rows of the same table.
 - [x] The example constructs its own PDO connection and passes it to DatabaseSkillStorage with a complete database mount. Schema creation and population remain outside the adapter; the adapter itself performs discovery and reads only.
 - [x] Running the example demonstrates a catalog location, loading the complete original skill document and reading a supporting text resource with that location and a separate relative path through the public APIs.
 - [x] Provide setup and run instructions, including PDO/SQLite requirements, the default skills table and its configurable alternative, application ownership of the schema and the meaning of the database mount.

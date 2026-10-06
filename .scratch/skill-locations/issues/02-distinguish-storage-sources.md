@@ -7,7 +7,7 @@
 **Status:** resolved
 
 - [x] Exercise a local skill and an in-memory custom-storage skill with the same declared name and different locations, document contents and guide contents. Both entries appear in the guidelines and can be selected independently through the public tools and repository.
-- [x] The custom-storage fixture models the proposed single-table database shape: skill_name, path and content, with a unique pair of skill_name and path. It interprets its own complete skill locations and requires no database service, credentials or production database adapter.
+- [x] The custom-storage fixture models the proposed single-table database shape: skill_identifier, path and content, with a unique pair of skill_identifier and path. It interprets its own complete skill locations and requires no database service, credentials or production database adapter.
 - [x] Loading the custom-storage location returns its original skill document; reading its relative guide returns its guide rather than the local content. A declared name differing from the backend identifier remains supported.
 - [x] When a requested resource is absent from the selected custom storage but present in the local same-name skill, the tool reports the selected-source error and direct PHP access throws RuntimeException. No retry or fallback to the local skill occurs.
 - [x] Duplicate skill locations are rejected whether repeated within one adapter or across adapters. This is a configuration failure rather than name shadowing, a warning or a skipped document; unreadable document handling must not hide an ownership collision.
@@ -31,7 +31,7 @@ original documents and guides, including a backend identifier differing from the
 declared name. Missing database resources fail through the tool and direct PHP
 without fallback. Overlapping mounts with distinct locations remain usable.
 `tests/Fixtures/TableSkillStorage.php` models one collection with
-`skill_name`, `path`, `content` and a unique `(skill_name, path)` pair.
+`skill_identifier`, `path`, `content` and a unique `(skill_identifier, path)` pair.
 
 `tests/SkillRepositoryTest.php` verifies duplicate rejection, unusable documents,
 repeated public access after failed discovery and successful corrected retry.

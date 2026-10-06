@@ -1,10 +1,10 @@
 # Try the skills demo
 
-For a local example without model credentials or network calls, see the
-[SQLite storage demo](#sqlite-storage-demo) below.
+For a local SQLite storage check without model credentials or network calls,
+run `vendor/bin/phpunit tests/DatabaseExampleTest.php`.
 
-One interactive agent loads two skill sources: `php-check`, included in
-`skills/`, and `caveman`, installed into `.agents/skills/` with the Skills CLI.
+One interactive agent loads `php-check` from `skills/`, `caveman` from
+`.agents/skills/`, and `dante` from `skills.sqlite`.
 
 ## Setup
 
@@ -16,6 +16,7 @@ From the repository root:
 
 ```sh
 composer install
+php examples/sqlite-setup.php
 cp examples/.env.example examples/.env
 ```
 
@@ -27,10 +28,10 @@ Install `caveman` **from `examples/`**, then start the chat:
 ```sh
 cd examples
 npx skills add juliusbrussee/caveman --skill caveman --agent universal --yes
-php agent-loop.php
+php demo.php
 ```
 
-The startup list should include `php-check` and `caveman`.
+Run SQLite setup before starting the chat; `demo.php` expects `skills.sqlite`.
 
 ## Try this conversation
 
@@ -38,11 +39,14 @@ This example illustrates a conversation with location-based tool inputs;
 wording, paths and results can vary on your machine.
 
 ```text
-$ php agent-loop.php
-Available skills: php-check, caveman
+$ php demo.php
+Available skills:
+- php-check: ... (location: file:///app/examples/skills/php-check/)
+- caveman: ... (location: file:///app/examples/.agents/skills/caveman/)
+- dante: ... (location: db://skills/dante/)
+Use a skill when the user requests it or it is relevant to the task. ...
 
-Try php-check for runtime checks or caveman for terse answers.
-See examples/README.md for setup and both scenarios.
+See examples/README.md for setup and scenarios.
 
 Type a message, or 'exit' to quit.
 
@@ -100,14 +104,16 @@ ok
 
 `skill` loads the instructions, `skill_resource` reads the reference, and `bash`
 executes the bundled script. The tools copy the complete catalog location and
-pass resource paths separately. The execution tool uses the decoded native local
-path as its working directory, not the `file:///` URI. Decode a validated local
-location once: `file:///app/my%20skills/check%2520/` has the native directory
-`/app/my skills/check%20/`. This lets relative script paths and neighboring assets
+pass literal resource paths separately. The execution tool uses the decoded
+native local path as its working directory, not the `file:///` URI. Use
+`rtrim(rawurldecode(substr($location, 7)), '/')` to decode a local catalog location once:
+`file:///app/my%20skills/check%2520/` has the native directory
+`/app/my skills/check%20`. This lets relative script paths and neighboring assets
 resolve from the skill directory. Remote locations do not provide local execution
 access. The skill tools themselves only read text.
 
-The demo constructs complete file mounts directly from `__DIR__`. File mounts
+The demo passes absolute directories under `__DIR__` to `FileSystemSkillStorage`,
+which constructs file mounts internally. File mounts
 use an empty host and an absolute path; hosts, queries and fragments are
 unsupported. See the
 [filesystem URI rules](../README.md#how-skills-work) for accepted forms and
@@ -116,61 +122,73 @@ symlink boundaries.
 Script output contains `PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and
 `PROC_OPEN`; the agent explains any failed checks.
 
+## Try a writing skill
+
+The SQLite `dante` skill has one short reference file. Start
+`php demo.php` and ask: **“Usa dante: scrivi una terzina
+su un viandante nella selva.”**
+
+The trace should show `skill` with location `db://skills/dante/`, followed by
+`skill_resource` with the same location and path `references/terzina.md`.
+The second verse should contain `lanterna di rame`, which appears only in the
+database reference.
+
 Type `exit` or `quit` to stop. Restart the script after installing new skills.
 For integration into your application, see the [Quick Start](../README.md#quick-start).
 
 ## SQLite storage demo
 
-This separate example uses PHP 8.1+, Composer, PDO and the `pdo_sqlite` driver.
-It runs locally without an API key, a model, Node.js or a remote database.
-From the repository root:
+The setup uses PHP 8.1+, Composer, PDO and the `pdo_sqlite` driver. From the
+repository root:
 
 ```sh
 composer install
-php examples/database/setup.php
-php examples/database/demo.php
+php examples/sqlite-setup.php
+php examples/demo.php
 ```
 
-Setup creates `examples/database/skills.sqlite`, an ignored local file. Both
-commands accept an optional database filename as their first argument; pass the
-same filename to each. Use a dedicated demo database. Rerunning setup replaces
-the two demo resources and leaves other rows in place.
+Setup creates `examples/skills.sqlite`, an ignored local file. It accepts an
+optional database filename as its first argument. The interactive demo reads
+the default `examples/skills.sqlite`. Use a dedicated demo database. Rerunning
+setup replaces the two `dante` resources and removes any old `demo-errors` rows.
 
-The application-side setup creates the default `skills` table with `skill_name`,
+An existing demo database using the old `skill_name` column needs that column
+renamed to `skill_identifier` before rerunning setup; alternatively, use a new
+database filename with both commands.
+
+The application-side setup creates the default `skills` table with `skill_identifier`,
 `path` and `content`. Its composite primary key enforces uniqueness of
-`(skill_name, path)`, using SQLite's binary collation to preserve case-sensitive
+`(skill_identifier, path)`, using SQLite's binary collation to preserve case-sensitive
 identities. All columns are non-null text. `SKILL.md` and
-`references/guide.md` are rows in that same table. The backend identifier is
-`editorial`; the declared skill name is `clear-writing`.
+`references/terzina.md` are rows in that same table. The backend identifier
+and declared skill name are both `dante`. The SKILL.md instructs the agent to
+read the reference before writing; its unique image appears only there.
 
-The demo constructs its own PDO connection and passes it to
-`new DatabaseSkillStorage('db://demo/', $pdo)`. It prints the toolkit's catalog,
-including `db://demo/editorial/`, then calls the public `skill` and
-`skill_resource` tools directly. The first returns the complete original
-document, including frontmatter; the second uses that catalog location and the
-separate relative path `references/guide.md` to return the writing guide.
-No model is needed to demonstrate these tool calls.
+The interactive demo constructs its own PDO connection and passes it to
+`new DatabaseSkillStorage($pdo)`. The agent's `skill` and
+`skill_resource` tools then read the document and its reference.
 
-The complete mount `db://demo/` is a public address for all skills in the selected
+The default base URI `db://skills/` is a public address for all skills in the selected
 table. It is neither a connection string nor a tenant filter. Two mounts over
 the same connection and table expose the same rows at different addresses. Use
 separate tables or databases for data isolation. To read an application-managed
 alternative table, pass its name as the third argument:
 
 ```php
-$storage = new DatabaseSkillStorage('db://team/', $pdo, 'team_skills');
+$storage = new DatabaseSkillStorage($pdo, table: 'team_skills', baseUri: 'db://team/');
 ```
 
 The application owns schema creation, uniqueness, case-sensitive identity rules
-and data updates. The adapter discovers skills and reads UTF-8 text; it never
-creates tables or populates them. PDO is its connection dependency, together
+and data updates. The adapter discovers skills and returns the fetched `content`
+string; it never creates tables or populates them. PDO is its connection dependency, together
 with your database's PDO driver. Adapter queries target portable SQL, while this
 setup script's DDL and `INSERT OR REPLACE` are SQLite-specific demonstration
 code. Automated verification uses real SQLite; other PDO engines are not yet
 verified, and the setup script is not a cross-database migration framework.
 
-Database locations provide text access only. They do not provide local script
-access or execution, materialize files, or deliver binary resources. The
+Database locations expose content through the read tools. They do not provide
+local script access or execution, materialize files, or offer a dedicated binary
+transfer tool. The
 filesystem demo and its existing skill documents remain separate.
 
 Run the example's automated checks with:

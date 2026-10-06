@@ -73,13 +73,13 @@ class SkillRepositoryTest extends TestCase
         $storage = new class ([]) extends InMemorySkillStorage {
             public bool $broken = true;
 
-            public function read(string $skill, string $path): string
+            public function read(string $location, string $path): string
             {
-                if ($skill === 'memory://skills/z-broken/' && $this->broken) {
+                if ($location === 'memory://skills/z-broken/' && $path === 'SKILL.md' && $this->broken) {
                     throw new LogicException('Temporary storage failure.');
                 }
 
-                return parent::read($skill, $path);
+                return parent::read($location, $path);
             }
         };
         $storage->files = [
@@ -346,21 +346,6 @@ class SkillRepositoryTest extends TestCase
         $repository->get('memory://skills/added/')->readDocument();
     }
 
-    public function test_rejects_an_empty_resource_path_before_calling_storage(): void
-    {
-        $storage = new InMemorySkillStorage([
-            'writing' => [
-                'SKILL.md' => "---\nname: writing\ndescription: Writing\n---\nInstructions.",
-                '' => 'Instructions exposed as a resource.',
-            ],
-        ]);
-        $repository = new SkillRepository($storage);
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Resource path "" is invalid.');
-        $repository->get('memory://skills/writing/')->readResource('');
-    }
-
     /** @dataProvider failingReads */
     public function test_propagates_expected_storage_failures(string $path, bool $instructions): void
     {
@@ -433,7 +418,7 @@ class SkillRepositoryTest extends TestCase
                 return ['memory://skills/broken/'];
             }
 
-            public function read(string $skill, string $path): string
+            public function read(string $location, string $path): string
             {
                 throw new LogicException('Storage failed unexpectedly.');
             }
@@ -467,9 +452,9 @@ class InMemorySkillStorage implements SkillStorageInterface
         return array_map(static fn (string $name): string => 'memory://skills/'.$name.'/', array_keys($this->files));
     }
 
-    public function read(string $skill, string $path): string
+    public function read(string $location, string $path): string
     {
-        $skill = basename($skill);
+        $skill = substr($location, strlen('memory://skills/'), -1);
         $this->reads[] = [$skill, $path];
         if (isset($this->failures[$skill][$path])) {
             throw new RuntimeException($this->failures[$skill][$path]);

@@ -16,32 +16,68 @@ class DatabaseSkillStorageTest extends TestCase
     protected function setUp(): void
     {
         $this->pdo = new PDO('sqlite::memory:');
-        $this->pdo->exec('CREATE TABLE skills (skill_name TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_name, path))');
+        $this->pdo->exec('CREATE TABLE skills (skill_identifier TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_identifier, path))');
         $this->pdo->exec("INSERT INTO skills VALUES ('writing', 'SKILL.md', 'Document'), ('writing', 'references/guide.md', 'Guide')");
+    }
+
+    public function test_default_base_uri_addresses_skills(): void
+    {
+        $storage = new DatabaseSkillStorage($this->pdo);
+
+        $this->assertSame(['db://skills/writing/'], $storage->list());
+        $this->assertSame('Document', $storage->read('db://skills/writing/', 'SKILL.md'));
     }
 
     public function test_configured_table_uses_supplied_connection(): void
     {
         $this->pdo->exec('ALTER TABLE skills RENAME TO team_skills');
-        $storage = new DatabaseSkillStorage('db://team/project/', $this->pdo, 'team_skills');
+        $storage = new DatabaseSkillStorage($this->pdo, table: 'team_skills', baseUri: 'db://team/project/');
         $this->assertSame(['db://team/project/writing/'], $storage->list());
         $this->assertSame('Guide', $storage->read('db://team/project/writing/', 'references/guide.md'));
     }
 
-    public function test_connection_column_case_setting_is_preserved(): void
+    /** @dataProvider identifiersWithSpecialCharacters */
+    public function test_identifiers_with_special_characters_round_trip(string $identifier): void
     {
-        $this->pdo->setAttribute(PDO::ATTR_CASE, PDO::CASE_UPPER);
-        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
-        $this->assertSame(['db://team/writing/'], $storage->list());
-        $this->assertSame('Guide', $storage->read('db://team/writing/', 'references/guide.md'));
-        $this->assertSame(PDO::CASE_UPPER, $this->pdo->getAttribute(PDO::ATTR_CASE));
+        $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
+        $insert->execute([$identifier, 'SKILL.md', 'Found the skill.']);
+        $insert->execute([$identifier, 'references/my #?% guide.md', 'Found the resource.']);
+
+        $storage = new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
+        $location = 'db://team/'.rawurlencode($identifier).'/';
+
+        $this->assertContains($location, $storage->list());
+        $this->assertSame('Found the skill.', $storage->read($location, 'SKILL.md'));
+        $this->assertSame('Found the resource.', $storage->read($location, 'references/my #?% guide.md'));
     }
 
-    /** @dataProvider databaseFailureModes */
-    public function test_missing_tables_fail_clearly_without_creating_them(int $mode, bool $read): void
+    /** @return array<string, array{string}> */
+    public static function identifiersWithSpecialCharacters(): array
     {
-        $this->pdo->setAttribute(PDO::ATTR_ERRMODE, $mode);
-        $storage = new DatabaseSkillStorage('db://team/', $this->pdo, 'missing');
+        return [
+            'space' => ['team skills'],
+            'URI delimiters' => ['team #1?'],
+            'literal percent sequence' => ['team %20'],
+            'Unicode and punctuation' => ["café [draft] + it's ready"],
+        ];
+    }
+
+    /** @dataProvider identifiersWithSpecialCharacters */
+    public function test_resource_directory_segments_with_special_characters_round_trip(string $directoryName): void
+    {
+        $path = $directoryName.'/guide.md';
+        $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
+        $insert->execute(['writing', $path, 'Found the resource.']);
+
+        $storage = new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
+
+        $this->assertSame('Found the resource.', $storage->read('db://team/writing/', $path));
+    }
+
+    /** @dataProvider databaseOperations */
+    public function test_missing_tables_fail_clearly_without_creating_them(bool $read): void
+    {
+        $storage = new DatabaseSkillStorage($this->pdo, table: 'missing', baseUri: 'db://team/');
         // Repeating the public operation must still fail: no implicit schema provisioning.
         for ($attempt = 0; $attempt < 2; ++$attempt) {
             try {
@@ -53,31 +89,29 @@ class DatabaseSkillStorageTest extends TestCase
         }
     }
 
-    /** @return array<string, array{int, bool}> */
-    public static function databaseFailureModes(): array
+    /** @return array<string, array{bool}> */
+    public static function databaseOperations(): array
     {
         return [
-            'exception list' => [PDO::ERRMODE_EXCEPTION, false],
-            'exception read' => [PDO::ERRMODE_EXCEPTION, true],
-            'silent list' => [PDO::ERRMODE_SILENT, false],
-            'silent read' => [PDO::ERRMODE_SILENT, true],
-            'warning list' => [PDO::ERRMODE_WARNING, false],
-            'warning read' => [PDO::ERRMODE_WARNING, true],
+            'list' => [false],
+            'read' => [true],
         ];
     }
 
-    /** @dataProvider unsupportedContent */
-    public function test_binary_content_is_rejected(string $content): void
+    /** @dataProvider binaryContents */
+    public function test_binary_content_is_returned_as_a_string(string $content): void
     {
         $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', 'asset.bin', $content]);
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('unsupported binary content');
-        (new DatabaseSkillStorage('db://team/', $this->pdo))->read('db://team/writing/', 'asset.bin');
+
+        $this->assertSame(
+            $content,
+            (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read('db://team/writing/', 'asset.bin'),
+        );
     }
 
     /** @return array<string, array{string}> */
-    public static function unsupportedContent(): array
+    public static function binaryContents(): array
     {
         return ['nul' => ["binary\0content"], 'invalid utf8' => ["invalid\xff"]];
     }
@@ -85,57 +119,22 @@ class DatabaseSkillStorageTest extends TestCase
     public function test_empty_text_is_readable(): void
     {
         $this->pdo->exec("INSERT INTO skills VALUES ('writing', 'empty.md', '')");
-        $this->assertSame('', (new DatabaseSkillStorage('db://team/', $this->pdo))->read('db://team/writing/', 'empty.md'));
+        $this->assertSame('', (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read('db://team/writing/', 'empty.md'));
     }
 
-    public function test_empty_text_is_readable_without_changing_connection_null_conversion(): void
+    public function test_empty_identifiers_fail_discovery_clearly(): void
     {
-        $this->pdo->setAttribute(PDO::ATTR_ORACLE_NULLS, PDO::NULL_EMPTY_STRING);
-        $this->pdo->exec("INSERT INTO skills VALUES ('writing', 'empty.md', '')");
-        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
-
-        $this->assertSame('', $storage->read('db://team/writing/', 'empty.md'));
-        $this->assertSame(PDO::NULL_EMPTY_STRING, $this->pdo->getAttribute(PDO::ATTR_ORACLE_NULLS));
-    }
-
-    /** @dataProvider dotIdentifiers */
-    public function test_dot_identifiers_have_canonical_readable_locations(string $identifier, string $location): void
-    {
-        $this->pdo->exec('DELETE FROM skills');
-        $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute([$identifier, 'SKILL.md', 'Dot document']);
-        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
-
-        $this->assertSame([$location], $storage->list());
-        $this->assertSame('Dot document', $storage->read($location, 'SKILL.md'));
-    }
-
-    /** @return array<string, array{string, string}> */
-    public static function dotIdentifiers(): array
-    {
-        return ['dot' => ['.', 'db://team/%2E/'], 'parent' => ['..', 'db://team/%2E%2E/']];
-    }
-
-    /** @dataProvider nullConversionModes */
-    public function test_empty_identifiers_fail_discovery_clearly(int $mode): void
-    {
-        $this->pdo->setAttribute(PDO::ATTR_ORACLE_NULLS, $mode);
         $this->pdo->exec("INSERT INTO skills VALUES ('', 'SKILL.md', 'Unaddressable document')");
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Skill identifiers must be non-empty strings.');
-        (new DatabaseSkillStorage('db://team/', $this->pdo))->list();
-    }
-
-    /** @return array<string, array{int}> */
-    public static function nullConversionModes(): array
-    {
-        return ['natural' => [PDO::NULL_NATURAL], 'empty string' => [PDO::NULL_EMPTY_STRING]];
+        (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->list();
     }
 
     /** @dataProvider relativePaths */
     public function test_relative_paths_stay_within_selected_skill(string $path): void
     {
-        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
+        $storage = new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
         $this->assertSame('Guide', $storage->read('db://team/writing/', $path));
     }
 
@@ -155,7 +154,7 @@ class DatabaseSkillStorageTest extends TestCase
         $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', $path, 'Must not be selected']);
         $this->expectException(RuntimeException::class);
-        (new DatabaseSkillStorage('db://team/', $this->pdo))->read('db://team/writing/', $path);
+        (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read('db://team/writing/', $path);
     }
 
     /** @return array<string, array{string}> */
@@ -173,7 +172,7 @@ class DatabaseSkillStorageTest extends TestCase
     public function test_rejects_unknown_or_noncanonical_locations(string $location): void
     {
         $this->expectException(RuntimeException::class);
-        (new DatabaseSkillStorage('db://team/', $this->pdo))->read($location, 'SKILL.md');
+        (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read($location, 'SKILL.md');
     }
 
     /** @return array<string, array{string}> */
@@ -184,15 +183,15 @@ class DatabaseSkillStorageTest extends TestCase
             'missing skill' => ['db://team/missing/'],
             'encoded alias' => ['db://team/%77riting/'],
             'missing slash' => ['db://team/writing'],
-            'full document address' => ['db://team/writing/SKILL.md'],
+            'encoded separator' => ['db://team/writing%2Fextra/'],
         ];
     }
 
     /** @dataProvider invalidConfiguration */
-    public function test_invalid_configuration_fails(string $mount, string $table): void
+    public function test_invalid_configuration_fails(string $baseUri, string $table): void
     {
         $this->expectException(RuntimeException::class);
-        new DatabaseSkillStorage($mount, $this->pdo, $table);
+        new DatabaseSkillStorage($this->pdo, table: $table, baseUri: $baseUri);
     }
 
     /** @return array<string, array{string, string}> */
@@ -205,6 +204,9 @@ class DatabaseSkillStorageTest extends TestCase
             'credentials' => ['db://user:pass@team/', 'skills'],
             'query' => ['db://team/?tenant=1', 'skills'],
             'fragment' => ['db://team/#part', 'skills'],
+            'space in base URI' => ['db://team skills/', 'skills'],
+            'encoded space in base URI' => ['db://team%20skills/', 'skills'],
+            'unicode in base URI' => ['db://café/', 'skills'],
             'dot segment' => ['db://team/../', 'skills'],
             'empty table' => ['db://team/', ''],
             'qualified table' => ['db://team/', 'main.skills'],

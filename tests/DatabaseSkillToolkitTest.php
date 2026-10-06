@@ -30,7 +30,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['editorial', 'SKILL.md', $document]);
         $insert->execute(['editorial', 'references/guide.md', 'Prefer concrete words.']);
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $toolkit = new SkillToolkit($repository);
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => 'db://team/editorial/'])]),
@@ -55,7 +55,7 @@ class DatabaseSkillToolkitTest extends TestCase
     public function test_catalog_is_lazy_and_retained_while_content_is_read_on_demand(): void
     {
         $pdo = new PDO('sqlite::memory:');
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $this->createSkillsTable($pdo);
         $original = "---\nname: writing\ndescription: Original summary\n---\nOriginal body";
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
@@ -89,7 +89,7 @@ class DatabaseSkillToolkitTest extends TestCase
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('was not found', $exception->getMessage());
         }
-        $pdo->exec("DELETE FROM skills WHERE skill_name = 'writing'");
+        $pdo->exec("DELETE FROM skills WHERE skill_identifier = 'writing'");
         $activation->execute();
         $this->assertStringContainsString('was not found', $activation->getResult());
         $this->assertSame($guidelines, $toolkit->guidelines());
@@ -102,20 +102,18 @@ class DatabaseSkillToolkitTest extends TestCase
     {
         $pdo = new PDO('sqlite::memory:');
         $this->createSkillsTable($pdo);
-        $empty = new SkillToolkit(new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo)));
+        $empty = new SkillToolkit(new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/')));
         $this->assertNull($empty->guidelines());
         $this->assertSame([], $empty->tools());
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['orphan', 'guide.md', 'No document']);
         $insert->execute(['malformed', 'SKILL.md', 'No frontmatter']);
-        $insert->execute(['binary', 'SKILL.md', "bad\0document"]);
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
 
         $this->assertSame([], $repository->catalog());
         $diagnostics = $repository->diagnostics();
-        $this->assertCount(3, $diagnostics);
+        $this->assertCount(2, $diagnostics);
         $messages = implode(' ', array_column($diagnostics, 'message'));
-        $this->assertStringContainsString('unsupported binary content', $messages);
         $this->assertStringContainsString('was not found', $messages);
     }
 
@@ -126,7 +124,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute([
             'writing', 'SKILL.md', "---\nname: writing\ndescription: Write clearly\n---\nInstructions",
         ]);
-        $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
+        $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         [$activation, $resource] = (new SkillToolkit($repository))->tools();
         $resource->setInputs(['location' => 'db://team/writing/', 'path' => 'missing.md'])->execute();
         $this->assertStringContainsString('was not found', $resource->getResult());
@@ -149,7 +147,7 @@ class DatabaseSkillToolkitTest extends TestCase
 
     private function createSkillsTable(PDO $pdo): void
     {
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT, path TEXT, content TEXT, UNIQUE(skill_name, path))');
+        $pdo->exec('CREATE TABLE skills (skill_identifier TEXT, path TEXT, content TEXT, UNIQUE(skill_identifier, path))');
     }
 
     private function hasResult(RequestRecord $record, string $expected): bool

@@ -106,6 +106,6 @@ streaming turn that loads a skill and its resource, checks the emitted calls and
 results, and reads the final message from the generator's return value.
 
 Composer validation, platform requirements, example syntax, and PHPStan on
-`examples/agent-loop.php` also pass. CI now covers PHP 8.1–8.5 against 4.0.0
+`examples/demo.php` also pass. CI now covers PHP 8.1–8.5 against 4.0.0
 and the latest allowed 4.x version; that matrix has not been run locally.
 The live OpenAI demo has not been exercised with API credentials.

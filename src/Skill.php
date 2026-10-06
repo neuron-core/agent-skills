@@ -58,13 +58,13 @@ final class Skill
         return $contents;
     }
 
-    /** @throws RuntimeException */
+    /**
+     * Read a resource by its literal path relative to this skill, such as references/my guide.md.
+     *
+     * @throws RuntimeException
+     */
     public function readResource(string $path): string
     {
-        if ($path === '') {
-            throw new RuntimeException('Resource path "" is invalid.');
-        }
-
         return $this->storage->read($this->location, $path);
     }
 

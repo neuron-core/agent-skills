@@ -16,8 +16,8 @@ interface SkillStorageInterface
     public function list(): array;
 
     /**
-     * Read a UTF-8 text file at a path relative to the selected skill root.
-     * Throw RuntimeException for expected failures such as an unknown skill, invalid path, or unreadable file.
+     * Read file contents as a PHP string using a canonical skill location and a literal relative path.
+     * Throw RuntimeException for expected failures such as an unknown resource or unreadable file.
      *
      * @throws RuntimeException
      */
