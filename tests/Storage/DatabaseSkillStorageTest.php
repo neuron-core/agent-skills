@@ -88,6 +88,50 @@ class DatabaseSkillStorageTest extends TestCase
         $this->assertSame('', (new DatabaseSkillStorage('db://team/', $this->pdo))->read('db://team/writing/', 'empty.md'));
     }
 
+    public function test_empty_text_is_readable_without_changing_connection_null_conversion(): void
+    {
+        $this->pdo->setAttribute(PDO::ATTR_ORACLE_NULLS, PDO::NULL_EMPTY_STRING);
+        $this->pdo->exec("INSERT INTO skills VALUES ('writing', 'empty.md', '')");
+        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
+
+        $this->assertSame('', $storage->read('db://team/writing/', 'empty.md'));
+        $this->assertSame(PDO::NULL_EMPTY_STRING, $this->pdo->getAttribute(PDO::ATTR_ORACLE_NULLS));
+    }
+
+    /** @dataProvider dotIdentifiers */
+    public function test_dot_identifiers_have_canonical_readable_locations(string $identifier, string $location): void
+    {
+        $this->pdo->exec('DELETE FROM skills');
+        $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute([$identifier, 'SKILL.md', 'Dot document']);
+        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
+
+        $this->assertSame([$location], $storage->list());
+        $this->assertSame('Dot document', $storage->read($location, 'SKILL.md'));
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function dotIdentifiers(): array
+    {
+        return ['dot' => ['.', 'db://team/%2E/'], 'parent' => ['..', 'db://team/%2E%2E/']];
+    }
+
+    /** @dataProvider nullConversionModes */
+    public function test_empty_identifiers_fail_discovery_clearly(int $mode): void
+    {
+        $this->pdo->setAttribute(PDO::ATTR_ORACLE_NULLS, $mode);
+        $this->pdo->exec("INSERT INTO skills VALUES ('', 'SKILL.md', 'Unaddressable document')");
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Skill identifiers must be non-empty strings.');
+        (new DatabaseSkillStorage('db://team/', $this->pdo))->list();
+    }
+
+    /** @return array<string, array{int}> */
+    public static function nullConversionModes(): array
+    {
+        return ['natural' => [PDO::NULL_NATURAL], 'empty string' => [PDO::NULL_EMPTY_STRING]];
+    }
+
     /** @dataProvider relativePaths */
     public function test_relative_paths_stay_within_selected_skill(string $path): void
     {
