@@ -31,50 +31,67 @@ The startup list should include `php-check` and `caveman`.
 
 ## Try this conversation
 
-Enter these messages at `You>`, one after the other. This example shows an
-actual conversation; wording, paths and results can vary on your machine.
+This example shows an actual conversation; wording, paths and results can vary on your machine.
 
 ```text
 $ php agent-loop.php
 Available skills: php-check, caveman
+
 Try php-check for runtime checks or caveman for terse answers.
 See examples/README.md for setup and both scenarios.
+
 Type a message, or 'exit' to quit.
 
-You> use caveman skill to explain the universe
-Agent>
+> use caveman skill to explain the universe
+
 [tool: skill {"name":"caveman"}]
-Universe = space + time + matter + energy.
-Big Bang start: hot dense state, then expansion, cooling.
-Stars form: gravity clumps gas, nuclear fusion makes elements.
-Supernova spread elements, build planets, life possible.
-Cosmos keeps expanding; dark energy drives late-time acceleration.
-Gravity shapes: galaxies, clusters, filaments, voids.
-Physics rules stay: quantum for tiny, relativity for big gravity.
 
-You> very well done!
-Agent> Thanks.
+Universe explain: space-time is a dynamical stage; matter/energy tells it how to curve; curvature tells matter/energy how to move.
 
-You> now use php-check skill and explain the results
-Agent>
+Big picture chain:
+- At smallest scales: quantum fields. Particles = field excitations.
+- Laws: gauge symmetry + quantum rules (Standard Model for known forces).
+- Gravity: usually modeled by general relativity (space-time curvature).
+- Early universe: hot, dense; rapid expansion (Big Bang model).
+- Structure growth: tiny density fluctuations → gravity collapse → galaxies/clusters.
+- Observations: expansion + CMB + light-element abundances support the model.
+- Fate: expansion keeps accelerating → dark energy term (unknown physics).
+
+“Why” it all exists: no confirmed answer; physics gives rules, not ultimate cause.
+
+> nice!
+
+Good.
+
+> now use php-check skill and explain the results
+
 [tool: skill {"name":"php-check"}]
 
 [tool: skill_resource {"name":"php-check","path":"references/checks.md"}]
 
-[tool: bash {"command":"php scripts/check.php","working_directory":"/home/asterix/asterixcapri/neuron-skills/examples/skills/php-check"}]
-Caveman results:
+[tool: bash {"command":"php scripts/check.php","working_directory":"/home/asterix/neuron-core/agent-skills/examples/skills/php-check"}]
 
-- PHP_VERSION=8.5.8. Pass. Need PHP 8.1+.
-- CURL_EXTENSION=loaded. Pass. cURL HTTP ok.
-- JSON_EXTENSION=loaded. Pass. JSON ops ok.
-- PROC_OPEN=available. Pass. Can spawn external cmd.
+PHP-check results (facts about *this* PHP CLI run):
 
-Next: runtime ok. No app cfg/API test here. Run your app tests next.
+- **PHP 8.1+**: `PHP_VERSION=8.5.8` ✅ pass
+  Next step: none.
 
-You> nice
-Agent> Nice.
+- **curl extension**: `CURL_EXTENSION=loaded` ✅ pass
+  Next step: none.
 
-You> quit
+- **json extension**: `JSON_EXTENSION=loaded` ✅ pass
+  Next step: none.
+
+- **proc_open**: `PROC_OPEN=available` ✅ pass
+  Next step: none.
+
+All required checks pass, so the PHP CLI environment this script used meets the prerequisites. (It still doesn’t verify app config, network access, or whether an external API call succeeds.)
+
+> fine
+
+ok
+
+> quit
 ```
 
 `skill` loads the instructions, `skill_resource` reads the reference, and `bash`
