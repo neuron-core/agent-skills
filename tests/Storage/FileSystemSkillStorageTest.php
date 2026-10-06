@@ -73,7 +73,33 @@ class FileSystemSkillStorageTest extends TestCase
             'relative path' => ['file:skills/'],
             'query' => ['file:///skills/?x=1'],
             'fragment' => ['file:///skills/#section'],
+            'malformed escape' => ['file:///skills/100%/'],
+            'null byte' => ['file:///skills/%00/'],
+            'backslash' => ['file:///skills/%5C/'],
+            'network path' => ['file:////server/skills/'],
+            'whitespace' => ['file:///skills/a b/'],
+            'control character' => ["file:///skills/a\nb/"],
+            'raw unicode' => ['file:///skills/café/'],
+            'raw brackets' => ['file:///skills/[draft]/'],
         ];
+    }
+
+    public function test_encoded_mount_and_skill_names_round_trip_without_double_decoding(): void
+    {
+        $root = $this->skillsRoot.'/sources café #100%25';
+        mkdir($root.'/notes %20é#/references', 0o777, true);
+        file_put_contents($root.'/notes %20é#/SKILL.md', 'Original document.');
+        file_put_contents($root.'/notes %20é#/references/%2e%2e.md', 'Literal percent filename.');
+        $storage = new FileSystemSkillStorage('file://'.$this->skillsRoot.'/sources%20caf%c3%a9%20%23100%2525/./');
+        $location = 'file://'.$this->skillsRoot.'/sources%20caf%C3%A9%20%23100%2525/notes%20%2520%C3%A9%23/';
+
+        $this->assertSame([$location], $storage->list());
+        $this->assertSame('Original document.', $storage->read($location, 'SKILL.md'));
+        $this->assertSame('Literal percent filename.', $storage->read($location, 'references/%2e%2e.md'));
+        $this->assertStorageError(
+            'Skill "'.str_replace('%C3%A9', '%c3%a9', $location).'" is not available.',
+            fn (): string => $storage->read(str_replace('%C3%A9', '%c3%a9', $location), 'SKILL.md'),
+        );
     }
 
     public function test_empty_and_nonexistent_roots_have_no_skills(): void
@@ -105,6 +131,12 @@ class FileSystemSkillStorageTest extends TestCase
 
         $this->assertSame(['file://'.$this->skillsRoot.'/shared-skill/'], $storage->list());
         $this->assertSame('Shared guide.', $storage->read('file://'.$this->skillsRoot.'/shared-skill/', 'guide.md'));
+        file_put_contents($this->outsideRoot.'/secret.md', 'Outside the linked skill.');
+        symlink($this->outsideRoot.'/secret.md', $this->outsideRoot.'/shared-skill/secret-link.md');
+        $this->assertStorageError(
+            'Resource "secret-link.md" escapes skill "file://'.$this->skillsRoot.'/shared-skill/".',
+            fn (): string => $storage->read('file://'.$this->skillsRoot.'/shared-skill/', 'secret-link.md'),
+        );
     }
 
     public function test_unknown_skill_location_is_an_expected_failure(): void
@@ -169,6 +201,11 @@ class FileSystemSkillStorageTest extends TestCase
         return [
             'empty' => [''],
             'null byte' => ["resource\0.md"],
+            'native absolute path' => ['/tmp/secret.md'],
+            'file URI' => ['file:///tmp/secret.md'],
+            'remote URI' => ['https://example.test/secret.md'],
+            'Windows absolute path' => ['C:\\skills\\secret.md'],
+            'UNC path' => ['\\\\server\\skills\\secret.md'],
         ];
     }
 
@@ -181,6 +218,18 @@ class FileSystemSkillStorageTest extends TestCase
             'Resource "../secret.md" escapes skill "file://'.$this->skillsRoot.'/writing/".',
             fn (): string => (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('file://'.$this->skillsRoot.'/writing/', '../secret.md'),
         );
+    }
+
+    public function test_parent_segments_within_the_selected_skill_remain_readable(): void
+    {
+        mkdir($this->skillsRoot.'/writing/references', 0o777, true);
+        file_put_contents($this->skillsRoot.'/writing/guide.md', 'Confined guide.');
+        $storage = new FileSystemSkillStorage('file://'.$this->skillsRoot.'/');
+
+        $this->assertSame('Confined guide.', $storage->read(
+            'file://'.$this->skillsRoot.'/writing/',
+            'references/../guide.md',
+        ));
     }
 
     public function test_reports_unknown_packages_missing_files_and_directories(): void

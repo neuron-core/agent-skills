@@ -54,8 +54,9 @@ use NeuronAI\Providers\OpenAI\OpenAI;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
+$projectMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $toolkit = SkillToolkit::make()
-    ->fromStorage(new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'));
+    ->fromStorage(new FileSystemSkillStorage($projectMount.'/.agents/skills/'));
 
 $agent = Agent::make()
     ->setThreadId('quick-start')
@@ -96,13 +97,27 @@ Skills can also include scripts. To execute them, register an execution tool,
 such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
 instructions and resource locations; your application controls execution.
 A `file:///` location is an address, not a native working directory. Validate
-and decode its local path before using it with an execution tool. Remote
+and decode its local path once before using it with an execution tool. Remote
 locations do not imply that their scripts can be executed.
 
-`FileSystemSkillStorage` accepts a local absolute file URI such as
-`file:///app/skills/`, rejecting other schemes, remote hosts, queries and
-fragments. Encode special characters in path segments when constructing mounts.
-It emits skill-root addresses with a trailing slash, excluding `SKILL.md`.
+`FileSystemSkillStorage` accepts local absolute file URIs with an empty host,
+such as `file:///app/skills/`. Other schemes, hosts (including `localhost`),
+queries, fragments, backslashes and malformed percent escapes are rejected.
+Percent-encode spaces, literal `%`, `#` and non-ASCII bytes in path segments:
+`/app/my skills/café%/` becomes `file:///app/my%20skills/caf%C3%A9%25/`.
+The examples encode native paths once while preserving `/` separators.
+
+Mounts may omit the final slash. Dot segments and redundant separators are
+normalized; discovery emits encoded skill-root addresses ending in `/`, without
+`SKILL.md`. Copy those addresses exactly: alternate URI spellings are not lookup
+aliases. Resource paths are separate native relative paths, so a resource named
+`notes%20.md` is requested as `notes%20.md`, without URI decoding. Parent segments
+are allowed when the resolved target remains inside the selected skill.
+
+A skill directory may be a symlink, including one pointing outside the storage
+root. Its public location stays under the configured mount, while its canonical
+native directory defines the resource boundary. Resource symlinks inside that
+boundary work; links and paths escaping it fail. Reads return UTF-8 text only.
 
 ## Multiple Skill Directories
 
