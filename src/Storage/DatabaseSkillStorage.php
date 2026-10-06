@@ -25,7 +25,10 @@ class DatabaseSkillStorage implements SkillStorageInterface
     {
         $locations = [];
         foreach ($this->select('SELECT skill_name FROM '.$this->table) as $row) {
-            $locations[$this->mount.rawurlencode($row[0]).'/'] = true;
+            if (!is_string($row[0]) || $row[0] === '') {
+                throw new RuntimeException('Skill identifiers must be non-empty strings.');
+            }
+            $locations[$this->location($row[0])] = true;
         }
         return array_keys($locations);
     }
@@ -34,7 +37,7 @@ class DatabaseSkillStorage implements SkillStorageInterface
     {
         $skill = rawurldecode(substr($location, strlen($this->mount), -1));
         if (!str_starts_with($location, $this->mount) || $skill === ''
-            || $location !== $this->mount.rawurlencode($skill).'/') {
+            || $location !== $this->location($skill)) {
             throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
         }
         $path = $this->relativePath($path);
@@ -46,11 +49,22 @@ class DatabaseSkillStorage implements SkillStorageInterface
         if ($rows === []) {
             throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $path, $location));
         }
-        $content = $rows[0][2];
+        // The schema requires NOT NULL; PDO::NULL_EMPTY_STRING can still fetch empty text as null.
+        $content = $rows[0][2] ?? '';
         if (!is_string($content) || str_contains($content, "\0") || preg_match('//u', $content) !== 1) {
             throw new RuntimeException(sprintf('Resource "%s" in skill "%s" contains unsupported binary content.', $path, $location));
         }
         return $content;
+    }
+
+    private function location(string $skill): string
+    {
+        $identifier = match ($skill) {
+            '.' => '%2E',
+            '..' => '%2E%2E',
+            default => rawurlencode($skill),
+        };
+        return $this->mount.$identifier.'/';
     }
 
     /**

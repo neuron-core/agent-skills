@@ -25,7 +25,7 @@ class DatabaseSkillToolkitTest extends TestCase
     public function test_agent_discovers_and_reads_original_database_document_and_resource(): void
     {
         $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT, path TEXT, content TEXT, UNIQUE(skill_name, path))');
+        $this->createSkillsTable($pdo);
         $document = "---\r\nname: writing\r\ndescription: Write clearly\r\nmetadata: {author: Human}\r\n---\r\nRead references/guide.md.  \r\n";
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['editorial', 'SKILL.md', $document]);
@@ -56,7 +56,7 @@ class DatabaseSkillToolkitTest extends TestCase
     {
         $pdo = new PDO('sqlite::memory:');
         $repository = new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo));
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT, path TEXT, content TEXT, UNIQUE(skill_name, path))');
+        $this->createSkillsTable($pdo);
         $original = "---\nname: writing\ndescription: Original summary\n---\nOriginal body";
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', 'SKILL.md', $original]);
@@ -101,7 +101,7 @@ class DatabaseSkillToolkitTest extends TestCase
     public function test_unusable_documents_produce_diagnostics_and_empty_tables_produce_no_tools(): void
     {
         $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT, path TEXT, content TEXT, UNIQUE(skill_name, path))');
+        $this->createSkillsTable($pdo);
         $empty = new SkillToolkit(new SkillRepository(new DatabaseSkillStorage('db://team/', $pdo)));
         $this->assertNull($empty->guidelines());
         $this->assertSame([], $empty->tools());
@@ -122,7 +122,7 @@ class DatabaseSkillToolkitTest extends TestCase
     public function test_tools_report_expected_failures_and_direct_access_throws(): void
     {
         $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE skills (skill_name TEXT, path TEXT, content TEXT, UNIQUE(skill_name, path))');
+        $this->createSkillsTable($pdo);
         $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute([
             'writing', 'SKILL.md', "---\nname: writing\ndescription: Write clearly\n---\nInstructions",
         ]);
@@ -145,6 +145,11 @@ class DatabaseSkillToolkitTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $repository->get('db://team/writing/')->readResource('guide.md');
+    }
+
+    private function createSkillsTable(PDO $pdo): void
+    {
+        $pdo->exec('CREATE TABLE skills (skill_name TEXT, path TEXT, content TEXT, UNIQUE(skill_name, path))');
     }
 
     private function hasResult(RequestRecord $record, string $expected): bool
