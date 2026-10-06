@@ -111,17 +111,30 @@ as separate sources. For example, combine bundled skills
 with skills installed by the CLI:
 
 ```php
+$projectMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $toolkit = SkillToolkit::make()
     ->fromStorage(
-        new FileSystemSkillStorage('file://'.__DIR__.'/skills/'),
-        new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
+        new FileSystemSkillStorage($projectMount.'/skills/'),
+        new FileSystemSkillStorage($projectMount.'/.agents/skills/'),
     );
 ```
 
 Skills with the same declared name remain available at distinct locations.
-Instructions and resources are read from the exact selected location. Restart the agent or recreate the
-toolkit after adding skills to an existing directory: each storage is discovered
-on first access and its catalog is then reused.
+Names are descriptive metadata, not unique selection keys. Each discovered
+location belongs to the adapter that listed it; instructions and resources stay
+with that source. A missing resource fails even if another same-name skill has
+that file.
+
+Listing the same exact location twice is a configuration error, including within
+one adapter or when registering the same adapter twice. Discovery throws a
+`RuntimeException` and does not publish a partial catalog for the conflicting
+adapter. Invalid or unreadable documents do not hide location conflicts.
+Overlapping mount roots are allowed when their discovered skill locations are
+distinct: selection uses the exact catalog address, without prefix precedence.
+
+Restart the agent or recreate the toolkit after adding skills to an existing
+directory: each storage is discovered on first access and its catalog is then
+reused.
 
 ## Accessing Skills Directly
 
@@ -135,8 +148,9 @@ use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
+$projectMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $skills = new SkillRepository(
-    new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
+    new FileSystemSkillStorage($projectMount.'/.agents/skills/'),
 );
 $agent->addTool(new SkillToolkit($skills));
 
@@ -144,7 +158,7 @@ foreach ($skills->catalog() as $skill) {
     echo $skill->name().': '.$skill->description().' ('.$skill->location().')';
 }
 
-$skill = $skills->get('file://'.__DIR__.'/.agents/skills/caveman/');
+$skill = $skills->get($projectMount.'/.agents/skills/caveman/');
 $frontmatter = $skill->readFrontmatter();   // Parsed YAML metadata as stdClass.
 $instructions = $skill->readInstructions(); // Body without YAML frontmatter.
 $document = $skill->readDocument();         // Complete original SKILL.md.
@@ -174,10 +188,31 @@ Throw `RuntimeException` for expected read failures, such as missing or
 unreadable resources. Empty text is valid. Reads must remain confined to the
 selected skill, without falling back to another source.
 
+For example, a database adapter can use one table with `skill_name`, `path` and
+`content`, constrained by `UNIQUE(skill_name, path)`:
+
+| skill_name | path | content |
+| --- | --- | --- |
+| team caveman | SKILL.md | A complete document declaring `name: caveman`. |
+| team caveman | references/guide.md | The database skill's guide text. |
+
+With mount `db://team/`, the adapter can expose
+`db://team/team%20caveman/` and translate it back to `team caveman` for reads.
+The declared name `caveman` can also appear in a local skill at
+`file:///app/skills/caveman/`; both remain visible and independently selectable.
+The model passes the database location and `references/guide.md` separately.
+If the database row is absent, that read fails without consulting the local
+skill. See the [in-memory table fixture](tests/Fixtures/TableSkillStorage.php)
+and [multi-storage integration tests](tests/MultipleSkillStoragesTest.php) for a
+service-free illustration; this library does not provide a production database
+adapter.
+
 ## Error Handling
 
-Invalid or unreadable skills are skipped. Use `$skills->diagnostics()` to inspect
-loading problems and warnings.
+Invalid or unreadable skill documents are skipped. Use `$skills->diagnostics()`
+to inspect loading problems and warnings. Duplicate skill locations instead fail
+discovery as a configuration error; they are never skipped or treated as name
+shadowing.
 
 The tools report read failures to the agent. When accessing skills directly,
 catch `RuntimeException` for unavailable skills, documents or resources.
