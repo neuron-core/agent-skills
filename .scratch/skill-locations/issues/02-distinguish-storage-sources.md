@@ -4,16 +4,39 @@
 
 **Blocked by:** 01 — Load skills and resources by exact skill location.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Exercise a local skill and an in-memory custom-storage skill with the same declared name and different locations, document contents and guide contents. Both entries appear in the guidelines and can be selected independently through the public tools and repository.
-- [ ] The custom-storage fixture models the proposed single-table database shape: skill_name, path and content, with a unique pair of skill_name and path. It interprets its own complete skill locations and requires no database service, credentials or production database adapter.
-- [ ] Loading the custom-storage location returns its original skill document; reading its relative guide returns its guide rather than the local content. A declared name differing from the backend identifier remains supported.
-- [ ] When a requested resource is absent from the selected custom storage but present in the local same-name skill, the tool reports the selected-source error and direct PHP access throws RuntimeException. No retry or fallback to the local skill occurs.
-- [ ] Duplicate skill locations are rejected whether repeated within one adapter or across adapters. This is a configuration failure rather than name shadowing, a warning or a skipped document; unreadable document handling must not hide an ownership collision.
-- [ ] A failed discovery does not publish part of the conflicting adapter's catalog or ownership claims. Subsequent public access must not silently succeed against a partially updated catalog. Verify observable behavior rather than private maps.
-- [ ] Overlapping mount roots with distinct discovered skill locations remain usable. Routing is by exact catalog location, with neither prefix precedence nor mount-overlap rejection.
-- [ ] Preserve diagnostics for ordinary invalid or unreadable skill documents and existing catalog lifecycle behavior, except for the intentional removal of same-name shadowing.
-- [ ] Extend the existing multi-storage and toolkit integration tests using the public tool interfaces. Cover duplicate-location failure and exact selection through the public repository contract without introducing test-only seams.
-- [ ] Custom-storage and multi-storage documentation explain location ownership, same-name coexistence, duplicate-location failure and the absence of resource fallback. Names are described as metadata, not unique selection keys.
-- [ ] The repository's composer check command passes. This ticket does not implement production database/S3 storage, schema migrations or external provisioning.
+- [x] Exercise a local skill and an in-memory custom-storage skill with the same declared name and different locations, document contents and guide contents. Both entries appear in the guidelines and can be selected independently through the public tools and repository.
+- [x] The custom-storage fixture models the proposed single-table database shape: skill_name, path and content, with a unique pair of skill_name and path. It interprets its own complete skill locations and requires no database service, credentials or production database adapter.
+- [x] Loading the custom-storage location returns its original skill document; reading its relative guide returns its guide rather than the local content. A declared name differing from the backend identifier remains supported.
+- [x] When a requested resource is absent from the selected custom storage but present in the local same-name skill, the tool reports the selected-source error and direct PHP access throws RuntimeException. No retry or fallback to the local skill occurs.
+- [x] Duplicate skill locations are rejected whether repeated within one adapter or across adapters. This is a configuration failure rather than name shadowing, a warning or a skipped document; unreadable document handling must not hide an ownership collision.
+- [x] A failed discovery does not publish part of the conflicting adapter's catalog or ownership claims. Subsequent public access must not silently succeed against a partially updated catalog. Verify observable behavior rather than private maps.
+- [x] Overlapping mount roots with distinct discovered skill locations remain usable. Routing is by exact catalog location, with neither prefix precedence nor mount-overlap rejection.
+- [x] Preserve diagnostics for ordinary invalid or unreadable skill documents and existing catalog lifecycle behavior, except for the intentional removal of same-name shadowing.
+- [x] Extend the existing multi-storage and toolkit integration tests using the public tool interfaces. Cover duplicate-location failure and exact selection through the public repository contract without introducing test-only seams.
+- [x] Custom-storage and multi-storage documentation explain location ownership, same-name coexistence, duplicate-location failure and the absence of resource fallback. Names are described as metadata, not unique selection keys.
+- [x] The repository's composer check command passes. This ticket does not implement production database/S3 storage, schema migrations or external provisioning.
+
+## Answer
+
+The repository claims exact discovered locations before reading metadata and
+rejects duplicates within or across adapters, even when documents are unusable.
+Failed discovery restores catalog, diagnostics and location claims; public
+access continues to fail until the conflicting source is corrected.
+
+`tests/MultipleSkillStoragesTest.php` now exercises a local and a database-shaped
+in-memory source through the agent/provider loop. Same-name skills retain their
+original documents and guides, including a backend identifier differing from the
+declared name. Missing database resources fail through the tool and direct PHP
+without fallback. Overlapping mounts with distinct locations remain usable.
+`tests/Fixtures/TableSkillStorage.php` models one collection with
+`skill_name`, `path`, `content` and a unique `(skill_name, path)` pair.
+
+`tests/SkillRepositoryTest.php` verifies duplicate rejection, unusable documents,
+repeated public access after failed discovery and successful corrected retry.
+README multi-storage and custom-storage guidance now describes ownership,
+metadata names, exact selection, duplicate failure and source confinement.
+
+Validation: failing duplicate/rollback tests were observed before implementation;
+`composer check` passes (129 PHPUnit tests, 444 assertions; PHPStan no errors).
