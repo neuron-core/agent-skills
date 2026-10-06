@@ -257,10 +257,13 @@ uniqueness rule for your database; the adapter cannot recover rows that the sche
 prevents you from storing. Requests preserve capitalization: `Guide.md` never
 reads `guide.md`.
 
-`skill_name` is a backend identifier; it may differ from the declared document
-name. With mount `db://team/`, identifier `team caveman` is discovered at
+`skill_name` is a non-empty string backend identifier; it may differ from the
+declared document name. An empty identifier causes discovery to fail with a
+`RuntimeException`. With mount `db://team/`, identifier `team caveman` is discovered at
 `db://team/team%20caveman/`. Identifier `literal%20name` becomes
 `db://team/literal%2520name/`, and `café` becomes `db://team/caf%C3%A9/`.
+The identifiers `.` and `..` become `db://team/%2E/` and `db://team/%2E%2E/`,
+so their locations contain no literal dot segments.
 Copy the catalog location verbatim into the tools and pass `references/guide.md`
 as a separate path. Paths are native text, so literal
 percent characters are not URI-decoded. Confined dot and parent segments work;
@@ -289,7 +292,9 @@ Catalog metadata is discovered lazily and retained by the repository. Documents
 and supporting resources are read on demand; recreate the repository to discover
 new skills or update catalog metadata. Updated text is visible on the next read;
 deleted documents and resources fail even while their catalog metadata remains.
-PDO error modes and column-case settings are preserved. Expected
+PDO connection settings are preserved. The required `content TEXT NOT NULL`
+contract lets the adapter read empty text even when `PDO::NULL_EMPTY_STRING`
+converts it to null during fetching. Expected
 access failures are `RuntimeException` for PHP callers and readable tool results.
 
 ## Error Handling
