@@ -47,6 +47,9 @@ No adapter implementation or new PR has been created.
   skill names remain metadata rather than backend lookup keys.
 - Preserve the bundled example skill document.
 
+- [Ticket 01](issues/01-load-database-skills.md) resolved: public PDO storage,
+  real SQLite toolkit tests, failure handling and CI support (`3856209`).
+
 ## Fog
 
 None. The user confirmed the complete design before implementation.

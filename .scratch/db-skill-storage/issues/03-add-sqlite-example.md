@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Load skill documents and resources from a database.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Add a database example separate from the existing filesystem example. Preserve the existing example skill documents and retain the filesystem example's behavior.
 - [ ] Provide application-side SQLite setup that creates and populates the skills table with skill_name, path and content and uniqueness on the pair of skill_name and path. Store SKILL.md and supporting resources as rows of the same table.
