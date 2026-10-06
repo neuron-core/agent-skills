@@ -37,12 +37,10 @@ if (!is_string($model) || trim($model) === '') {
     $model = 'gpt-5.4-nano';
 }
 
-// Encode the native path once, preserving directory separators.
-$examplesMount = 'file://'.str_replace('%2F', '/', rawurlencode(__DIR__));
 $skills = new SkillRepository(
     // Bundled skills and skills installed by the CLI in examples/.
-    new FileSystemSkillStorage($examplesMount.'/skills/'),
-    new FileSystemSkillStorage($examplesMount.'/.agents/skills/'),
+    new FileSystemSkillStorage('file://'.__DIR__.'/skills/'),
+    new FileSystemSkillStorage('file://'.__DIR__.'/.agents/skills/'),
 );
 
 $agent = Agent::make()

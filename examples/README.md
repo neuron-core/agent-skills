@@ -104,10 +104,9 @@ location once: `file:///app/my%20skills/check%2520/` has the native directory
 resolve from the skill directory. Remote locations do not provide local execution
 access. The skill tools themselves only read text.
 
-The demo constructs complete file mounts by percent-encoding the checkout's
-native path while preserving `/` separators, so spaces, literal percent signs,
-`#` and non-ASCII directory names work. File mounts use an empty host and an
-absolute path; hosts, queries and fragments are unsupported. See the
+The demo constructs complete file mounts directly from `__DIR__`. File mounts
+use an empty host and an absolute path; hosts, queries and fragments are
+unsupported. See the
 [filesystem URI rules](../README.md#how-skills-work) for accepted forms and
 symlink boundaries.
 
