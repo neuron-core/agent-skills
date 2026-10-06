@@ -1,5 +1,8 @@
 # Try the skills demo
 
+For a local example without model credentials or network calls, see the
+[SQLite storage demo](#sqlite-storage-demo) below.
+
 One interactive agent loads two skill sources: `php-check`, included in
 `skills/`, and `caveman`, installed into `.agents/skills/` with the Skills CLI.
 
@@ -115,3 +118,63 @@ Script output contains `PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and
 
 Type `exit` or `quit` to stop. Restart the script after installing new skills.
 For integration into your application, see the [Quick Start](../README.md#quick-start).
+
+## SQLite storage demo
+
+This separate example uses PHP 8.1+, Composer, PDO and the `pdo_sqlite` driver.
+It runs locally without an API key, a model, Node.js or a remote database.
+From the repository root:
+
+```sh
+composer install
+php examples/database/setup.php
+php examples/database/demo.php
+```
+
+Setup creates `examples/database/skills.sqlite`, an ignored local file. Both
+commands accept an optional database filename as their first argument; pass the
+same filename to each. Use a dedicated demo database. Rerunning setup replaces
+the two demo resources and leaves other rows in place.
+
+The application-side setup creates the default `skills` table with `skill_name`,
+`path` and `content`. Its composite primary key enforces uniqueness of
+`(skill_name, path)`, using SQLite's binary collation to preserve case-sensitive
+identities. All columns are non-null text. `SKILL.md` and
+`references/guide.md` are rows in that same table. The backend identifier is
+`editorial`; the declared skill name is `clear-writing`.
+
+The demo constructs its own PDO connection and passes it to
+`new DatabaseSkillStorage('db://demo/', $pdo)`. It prints the toolkit's catalog,
+including `db://demo/editorial/`, then calls the public `skill` and
+`skill_resource` tools directly. The first returns the complete original
+document, including frontmatter; the second uses that catalog location and the
+separate relative path `references/guide.md` to return the writing guide.
+No model is needed to demonstrate these tool calls.
+
+The complete mount `db://demo/` is a public address for all skills in the selected
+table. It is neither a connection string nor a tenant filter. Two mounts over
+the same connection and table expose the same rows at different addresses. Use
+separate tables or databases for data isolation. To read an application-managed
+alternative table, pass its name as the third argument:
+
+```php
+$storage = new DatabaseSkillStorage('db://team/', $pdo, 'team_skills');
+```
+
+The application owns schema creation, uniqueness, case-sensitive identity rules
+and data updates. The adapter discovers skills and reads UTF-8 text; it never
+creates tables or populates them. PDO is its connection dependency, together
+with your database's PDO driver. Adapter queries target portable SQL, while this
+setup script's DDL and `INSERT OR REPLACE` are SQLite-specific demonstration
+code. Automated verification uses real SQLite; other PDO engines are not yet
+verified, and the setup script is not a cross-database migration framework.
+
+Database locations provide text access only. They do not provide local script
+access or execution, materialize files, or deliver binary resources. The
+filesystem demo and its existing skill documents remain separate.
+
+Run the example's automated checks with:
+
+```sh
+vendor/bin/phpunit tests/DatabaseExampleTest.php
+```
