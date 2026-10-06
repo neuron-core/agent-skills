@@ -36,7 +36,7 @@ class FileSystemSkillStorage implements SkillStorageInterface
     {
         // Accept local absolute file URIs only. Decode the mount once; resource paths are native text.
         if (!str_starts_with($mount, 'file:///') || str_contains($mount, '?') || str_contains($mount, '#')
-            || preg_match('/%(?![0-9a-fA-F]{2})/', $mount) === 1) {
+            || preg_match('~%(?![0-9a-fA-F]{2})|[^a-zA-Z0-9/._\~!$&\'()*+,;=:@%\-]~', $mount) === 1) {
             throw new RuntimeException('Skill mount must be a local absolute file URI.');
         }
         $root = rawurldecode(substr($mount, 7));

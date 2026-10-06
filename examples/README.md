@@ -98,8 +98,21 @@ ok
 `skill` loads the instructions, `skill_resource` reads the reference, and `bash`
 executes the bundled script. The tools copy the complete catalog location and
 pass resource paths separately. The execution tool uses the decoded native local
-path as its working directory, not the `file:///` URI. Its output contains `PHP_VERSION`, `CURL_EXTENSION`,
-`JSON_EXTENSION` and `PROC_OPEN`; the agent explains any failed checks.
+path as its working directory, not the `file:///` URI. Decode a validated local
+location once: `file:///app/my%20skills/check%2520/` has the native directory
+`/app/my skills/check%20/`. This lets relative script paths and neighboring assets
+resolve from the skill directory. Remote locations do not provide local execution
+access. The skill tools themselves only read text.
+
+The demo constructs complete file mounts by percent-encoding the checkout's
+native path while preserving `/` separators, so spaces, literal percent signs,
+`#` and non-ASCII directory names work. File mounts use an empty host and an
+absolute path; hosts, queries and fragments are unsupported. See the
+[filesystem URI rules](../README.md#how-skills-work) for accepted forms and
+symlink boundaries.
+
+Script output contains `PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and
+`PROC_OPEN`; the agent explains any failed checks.
 
 Type `exit` or `quit` to stop. Restart the script after installing new skills.
 For integration into your application, see the [Quick Start](../README.md#quick-start).
