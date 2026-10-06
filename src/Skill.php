@@ -18,7 +18,7 @@ final class Skill
         private readonly string $name,
         private readonly string $description,
         private readonly SkillStorageInterface $storage,
-        private readonly string $identifier,
+        private readonly string $location,
     ) {
     }
 
@@ -32,28 +32,27 @@ final class Skill
         return $this->description;
     }
 
-    /** @throws RuntimeException */
-    public function location(): ?string
+    public function location(): string
     {
-        return $this->storage->location($this->identifier);
+        return $this->location;
     }
 
     /** @throws RuntimeException */
     public function readInstructions(): string
     {
-        return trim($this->parseDocument($this->storage->read($this->identifier, 'SKILL.md'))['body']);
+        return trim($this->parseDocument($this->storage->read($this->location, 'SKILL.md'))['body']);
     }
 
     /** @throws RuntimeException */
     public function readFrontmatter(): stdClass
     {
-        return $this->parseDocument($this->storage->read($this->identifier, 'SKILL.md'))['frontmatter'];
+        return $this->parseDocument($this->storage->read($this->location, 'SKILL.md'))['frontmatter'];
     }
 
     /** @throws RuntimeException */
     public function readDocument(): string
     {
-        $contents = $this->storage->read($this->identifier, 'SKILL.md');
+        $contents = $this->storage->read($this->location, 'SKILL.md');
         $this->parseDocument($contents);
 
         return $contents;
@@ -66,13 +65,13 @@ final class Skill
             throw new RuntimeException('Resource path "" is invalid.');
         }
 
-        return $this->storage->read($this->identifier, $path);
+        return $this->storage->read($this->location, $path);
     }
 
     /** @return array{name: string, description: string, body: string, frontmatter: stdClass} */
     private function parseDocument(string $contents): array
     {
-        $document = (new SkillDocumentParser())->parse($contents, $this->identifier)['document'];
+        $document = (new SkillDocumentParser())->parse($contents)['document'];
         if ($document === null) {
             throw new RuntimeException(sprintf('Skill "%s" has invalid frontmatter.', $this->name));
         }

@@ -9,25 +9,17 @@ use RuntimeException;
 interface SkillStorageInterface
 {
     /**
-     * Return the storage identifiers of available skill packages.
+     * Return complete canonical skill-root locations, with a trailing slash.
      *
      * @return string[]
      */
     public function list(): array;
 
     /**
-     * Return a base location accessible to host tools, or null if none is available.
-     * The location need not be a local filesystem path.
-     *
-     * @throws RuntimeException
-     */
-    public function location(string $skill): ?string;
-
-    /**
-     * Read a UTF-8 text file at a path relative to the skill package.
+     * Read a UTF-8 text file at a path relative to the selected skill root.
      * Throw RuntimeException for expected failures such as an unknown skill, invalid path, or unreadable file.
      *
      * @throws RuntimeException
      */
-    public function read(string $skill, string $path): string;
+    public function read(string $location, string $path): string;
 }

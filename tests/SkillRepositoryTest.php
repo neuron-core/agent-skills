@@ -29,12 +29,12 @@ class SkillRepositoryTest extends TestCase
         $storage->files['writing'] = ['SKILL.md' => "---\nname: writing\ndescription: Writing\n---\nBody"];
 
         if ($accessor === 'get') {
-            $repository->get('writing');
+            $repository->get('memory://skills/writing/');
         } else {
             $repository->{$accessor}();
         }
 
-        $selected = $repository->get('writing');
+        $selected = $repository->get('memory://skills/writing/');
         $repository->catalog();
         $repository->names();
         $repository->diagnostics();
@@ -42,19 +42,19 @@ class SkillRepositoryTest extends TestCase
         $this->assertSame([['writing', 'SKILL.md']], $storage->reads);
 
         $later = new InMemorySkillStorage([
-            'writing' => ['SKILL.md' => "---\nname: writing\ndescription: Shadowed\n---\nOther"],
+            'other-writing' => ['SKILL.md' => "---\nname: writing\ndescription: Other\n---\nOther"],
             'extra' => ['SKILL.md' => "---\nname: extra\ndescription: Extra\n---\nExtra"],
         ]);
         $repository->addStorage($later);
         $this->assertSame(0, $later->listCalls);
         $this->assertCount(0, $later->reads);
-        $this->assertSame(['writing', 'extra'], $repository->names());
-        $this->assertSame($selected, $repository->get('writing'));
+        $this->assertSame(['writing', 'extra', 'writing'], $repository->names());
+        $this->assertSame($selected, $repository->get('memory://skills/writing/'));
         $this->assertSame(1, $storage->listCalls);
         $this->assertSame([['writing', 'SKILL.md']], $storage->reads);
         $this->assertSame(1, $later->listCalls);
         $this->assertCount(2, $later->reads);
-        $this->assertCount(1, $repository->diagnostics());
+        $this->assertSame([], $repository->diagnostics());
     }
 
     /** @return array<string, array{string}> */
@@ -75,7 +75,7 @@ class SkillRepositoryTest extends TestCase
 
             public function read(string $skill, string $path): string
             {
-                if ($skill === 'z-broken' && $this->broken) {
+                if ($skill === 'memory://skills/z-broken/' && $this->broken) {
                     throw new LogicException('Temporary storage failure.');
                 }
 
@@ -96,7 +96,7 @@ class SkillRepositoryTest extends TestCase
 
         $storage->broken = false;
         $this->assertSame(['first', 'second'], $repository->names());
-        $this->assertCount(2, $repository->diagnostics());
+        $this->assertSame([], $repository->diagnostics());
         $repository->catalog();
         $this->assertSame(2, $storage->listCalls);
     }
@@ -111,9 +111,9 @@ class SkillRepositoryTest extends TestCase
 
         $this->assertSame(
             "# Writing instructions\n\nPrefer direct sentences.",
-            $repository->get('writing')->readInstructions(),
+            $repository->get('memory://skills/writing/')->readInstructions(),
         );
-        $this->assertNull($repository->get('writing')->location());
+        $this->assertSame('memory://skills/writing/', $repository->get('memory://skills/writing/')->location());
     }
 
     public function test_reads_complete_frontmatter_without_losing_custom_fields(): void
@@ -133,7 +133,7 @@ class SkillRepositoryTest extends TestCase
                 Write directly.
                 SKILL],
         ]);
-        $skill = (new SkillRepository($storage))->get('writing');
+        $skill = (new SkillRepository($storage))->get('memory://skills/writing/');
         $frontmatter = $skill->readFrontmatter();
 
         $this->assertSame('writing', $frontmatter->name);
@@ -156,14 +156,26 @@ class SkillRepositoryTest extends TestCase
         $skill->readFrontmatter();
     }
 
+    public function test_declared_name_is_not_a_lookup_alias(): void
+    {
+        $repository = new SkillRepository(new InMemorySkillStorage([
+            'folder' => ['SKILL.md' => "---\nname: writing\ndescription: Writing\n---\nBody"],
+        ]));
+        $this->assertSame('writing', $repository->get('memory://skills/folder/')->name());
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Skill "writing" is not available.');
+        $repository->get('writing');
+    }
+
     public function test_get_rejects_an_unknown_skill(): void
     {
         $repository = new SkillRepository(new InMemorySkillStorage([]));
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Skill "missing" is not available.');
+        $this->expectExceptionMessage('Skill "memory://skills/missing/" is not available.');
 
-        $repository->get('missing');
+        $repository->get('memory://skills/missing/');
     }
 
     public function test_builds_a_deterministic_catalog_and_preserves_complete_instructions(): void
@@ -186,10 +198,10 @@ class SkillRepositoryTest extends TestCase
             $repository->catalog(),
         ));
         $this->assertSame(['analysis', 'writing'], $repository->names());
-        $this->assertSame($repository->get('analysis'), $repository->catalog()[0]);
-        $this->assertSame($repository->get('writing'), $repository->catalog()[1]);
-        $this->assertSame($storage->files['writing']['SKILL.md'], $repository->get('writing')->readDocument());
-        $this->assertSame($storage->files['analysis']['SKILL.md'], $repository->get('analysis')->readDocument());
+        $this->assertSame($repository->get('memory://skills/analysis/'), $repository->catalog()[0]);
+        $this->assertSame($repository->get('memory://skills/writing/'), $repository->catalog()[1]);
+        $this->assertSame($storage->files['writing']['SKILL.md'], $repository->get('memory://skills/writing/')->readDocument());
+        $this->assertSame($storage->files['analysis']['SKILL.md'], $repository->get('memory://skills/analysis/')->readDocument());
     }
 
     /** @dataProvider invalidSkills */
@@ -216,7 +228,7 @@ class SkillRepositoryTest extends TestCase
         ];
     }
 
-    public function test_first_usable_alphabetical_candidate_owns_the_declared_name_and_reads(): void
+    public function test_distinct_locations_with_the_same_declared_name_keep_their_documents(): void
     {
         $repository = new SkillRepository(new InMemorySkillStorage([
             'z-last' => ['SKILL.md' => "---\nname: shared\ndescription: Last\n---\nLast body"],
@@ -226,16 +238,16 @@ class SkillRepositoryTest extends TestCase
                 'guide.md' => 'First guide',
             ],
         ]));
-        $this->assertSame([['name' => 'shared', 'description' => 'First']], array_map(
+        $this->assertSame([['name' => 'shared', 'description' => 'First'], ['name' => 'shared', 'description' => 'Last']], array_map(
             static fn (Skill $skill): array => ['name' => $skill->name(), 'description' => $skill->description()],
             $repository->catalog(),
         ));
-        $this->assertSame("---\nname: shared\ndescription: First\n---\nFirst body", $repository->get('shared')->readDocument());
-        $this->assertSame('First guide', $repository->get('shared')->readResource('guide.md'));
+        $this->assertSame("---\nname: shared\ndescription: First\n---\nFirst body", $repository->get('memory://skills/b-first/')->readDocument());
+        $this->assertSame('First guide', $repository->get('memory://skills/b-first/')->readResource('guide.md'));
         $diagnostics = $repository->diagnostics();
-        $this->assertSame('a-invalid', $diagnostics[0]['skill']);
-        $this->assertSame('z-last', $diagnostics[3]['skill']);
-        $this->assertStringContainsString('shadowed', $diagnostics[3]['message']);
+        $this->assertSame('memory://skills/a-invalid/', $diagnostics[0]['skill']);
+        $this->assertCount(1, $diagnostics);
+        $this->assertSame('Last body', $repository->get('memory://skills/z-last/')->readInstructions());
     }
 
     public function test_catalog_is_snapshotted_while_instruction_and_resource_reads_are_lazy(): void
@@ -258,11 +270,11 @@ class SkillRepositoryTest extends TestCase
             static fn (Skill $skill): array => ['name' => $skill->name(), 'description' => $skill->description()],
             $repository->catalog(),
         ));
-        $this->assertSame($storage->files['writing']['SKILL.md'], $repository->get('writing')->readDocument());
-        $this->assertSame('Changed guide.', $repository->get('writing')->readResource('guide.md'));
+        $this->assertSame($storage->files['writing']['SKILL.md'], $repository->get('memory://skills/writing/')->readDocument());
+        $this->assertSame('Changed guide.', $repository->get('memory://skills/writing/')->readResource('guide.md'));
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Skill "added" is not available.');
-        $repository->get('added')->readDocument();
+        $this->expectExceptionMessage('Skill "memory://skills/added/" is not available.');
+        $repository->get('memory://skills/added/')->readDocument();
     }
 
     public function test_rejects_an_empty_resource_path_before_calling_storage(): void
@@ -277,7 +289,7 @@ class SkillRepositoryTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Resource path "" is invalid.');
-        $repository->get('writing')->readResource('');
+        $repository->get('memory://skills/writing/')->readResource('');
     }
 
     /** @dataProvider failingReads */
@@ -294,9 +306,9 @@ class SkillRepositoryTest extends TestCase
         $this->expectExceptionMessage('Read failed.');
 
         if ($instructions) {
-            $repository->get('writing')->readDocument();
+            $repository->get('memory://skills/writing/')->readDocument();
         } else {
-            $repository->get('writing')->readResource($path);
+            $repository->get('memory://skills/writing/')->readResource($path);
         }
     }
 
@@ -321,7 +333,7 @@ class SkillRepositoryTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Skill "writing" has invalid frontmatter.');
 
-        $repository->get('writing')->readDocument();
+        $repository->get('memory://skills/writing/')->readDocument();
     }
 
     public function test_rejects_resources_from_an_unknown_skill(): void
@@ -329,9 +341,9 @@ class SkillRepositoryTest extends TestCase
         $repository = new SkillRepository(new InMemorySkillStorage([]));
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Skill "unknown" is not available.');
+        $this->expectExceptionMessage('Skill "memory://skills/unknown/" is not available.');
 
-        $repository->get('unknown')->readResource('guide.md');
+        $repository->get('memory://skills/unknown/')->readResource('guide.md');
     }
 
     public function test_expected_manifest_storage_failures_exclude_a_package_from_the_catalog(): void
@@ -347,14 +359,9 @@ class SkillRepositoryTest extends TestCase
     public function test_unexpected_storage_failures_remain_exceptions(): void
     {
         $storage = new class () implements SkillStorageInterface {
-            public function location(string $skill): ?string
-            {
-                return null;
-            }
-
             public function list(): array
             {
-                return ['broken'];
+                return ['memory://skills/broken/'];
             }
 
             public function read(string $skill, string $path): string
@@ -385,19 +392,15 @@ class InMemorySkillStorage implements SkillStorageInterface
     /** @var list<array{string, string}> */
     public array $reads = [];
 
-    public function location(string $skill): ?string
-    {
-        return null;
-    }
-
     public function list(): array
     {
         ++$this->listCalls;
-        return array_keys($this->files);
+        return array_map(static fn (string $name): string => 'memory://skills/'.$name.'/', array_keys($this->files));
     }
 
     public function read(string $skill, string $path): string
     {
+        $skill = basename($skill);
         $this->reads[] = [$skill, $path];
         if (isset($this->failures[$skill][$path])) {
             throw new RuntimeException($this->failures[$skill][$path]);

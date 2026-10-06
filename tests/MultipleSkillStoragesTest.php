@@ -61,20 +61,20 @@ class MultipleSkillStoragesTest extends TestCase
     {
         $projectDocument = $this->skill('project', '123', "'123'", 'Project');
         $this->skill('user', '123', "'123'", 'User');
-        $project = new FileSystemSkillStorage($this->root.'/project');
-        $user = new FileSystemSkillStorage($this->root.'/user');
-        $this->assertSame(['123'], $project->list());
+        $project = new FileSystemSkillStorage('file://'.$this->root.'/project'.'/');
+        $user = new FileSystemSkillStorage('file://'.$this->root.'/user'.'/');
+        $this->assertSame(['file://'.$this->root.'/project/123/'], $project->list());
         foreach ([
             new SkillToolkit(new SkillRepository($project)),
             new SkillToolkit(new SkillRepository($project, $user)),
             SkillToolkit::make()->fromStorage($project),
             SkillToolkit::make()->fromStorage($project, $user),
         ] as $toolkit) {
-            $this->assertStringContainsString('Project (location: '.$this->root.'/project/123)', $toolkit->guidelines() ?? '');
+            $this->assertStringContainsString('Project (location: file://'.$this->root.'/project/123/)', $toolkit->guidelines() ?? '');
             [$activation, $resource] = $toolkit->tools();
-            $activation->setInputs(['name' => '123'])->execute();
+            $activation->setInputs(['location' => 'file://'.$this->root.'/project/123/'])->execute();
             $this->assertSame($projectDocument, $activation->getResult());
-            $resource->setInputs(['name' => '123', 'path' => 'guide.md'])->execute();
+            $resource->setInputs(['location' => 'file://'.$this->root.'/project/123/', 'path' => 'guide.md'])->execute();
             $this->assertSame("project guide for '123'", $resource->getResult());
         }
     }
@@ -93,23 +93,20 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertNull($toolkit->guidelines());
         $this->assertCount(0, $toolkit->tools());
 
-        $repository->addStorage(new FileSystemSkillStorage($this->root.'/project'));
-        $selected = $repository->get('shared');
-        $this->assertSame($toolkit, $toolkit->fromStorage(new FileSystemSkillStorage($this->root.'/user')));
-        $this->assertSame($selected, $repository->get('shared'));
+        $repository->addStorage(new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'));
+        $selected = $repository->get('file://'.$this->root.'/project/shared/');
+        $this->assertSame($toolkit, $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/user'.'/')));
+        $this->assertSame($selected, $repository->get('file://'.$this->root.'/project/shared/'));
         $this->assertSame($projectDocument, $selected->readDocument());
-        $this->assertSame($userDocument, $repository->get('extra')->readDocument());
-        $this->assertSame(['shared', 'extra'], $repository->names());
-        $this->assertSame(
-            'Skill "shared" is shadowed by an earlier candidate with the same name.',
-            $repository->diagnostics()[0]['message'],
-        );
+        $this->assertSame($userDocument, $repository->get('file://'.$this->root.'/user/extra/')->readDocument());
+        $this->assertSame(['shared', 'extra', 'shared'], $repository->names());
+        $this->assertSame([], $repository->diagnostics());
         $this->assertStringContainsString('shared: Project', $toolkit->guidelines() ?? '');
         $this->assertStringContainsString('extra: Extra', $toolkit->guidelines() ?? '');
         $this->assertCount(2, $toolkit->tools());
     }
 
-    public function test_repeated_storage_configuration_preserves_precedence(): void
+    public function test_repeated_storage_configuration_preserves_exact_selection(): void
     {
         $projectDocument = $this->skill('project', 'shared', 'shared', 'Project');
         $this->skill('user', 'shared', 'shared', 'User');
@@ -117,49 +114,49 @@ class MultipleSkillStoragesTest extends TestCase
 
         $this->assertNull($toolkit->guidelines());
         $this->assertCount(0, $toolkit->tools());
-        $toolkit->fromStorage(new FileSystemSkillStorage($this->root.'/project'));
-        $toolkit->fromStorage(new FileSystemSkillStorage($this->root.'/user'));
+        $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'));
+        $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/user'.'/'));
 
         [$activation] = $toolkit->tools();
-        $activation->setInputs(['name' => 'shared'])->execute();
+        $activation->setInputs(['location' => 'file://'.$this->root.'/project/shared/'])->execute();
         $this->assertSame($projectDocument, $activation->getResult());
     }
 
-    public function test_precedence_keeps_documents_locations_and_resources_together(): void
+    public function test_exact_selection_keeps_documents_locations_and_resources_together(): void
     {
         $projectDocument = $this->skill('project', 'folder', 'shared', 'Project');
         $userDocument = $this->skill('user', 'folder', 'shared', 'User');
         file_put_contents($this->root.'/user/folder/user-only.md', 'Must not leak');
-        $project = new FileSystemSkillStorage($this->root.'/project');
-        $user = new FileSystemSkillStorage($this->root.'/user');
+        $project = new FileSystemSkillStorage('file://'.$this->root.'/project'.'/');
+        $user = new FileSystemSkillStorage('file://'.$this->root.'/user'.'/');
         $repository = new SkillRepository();
         $repository->addStorage($project, $user);
-        $this->assertSame([['name' => 'shared', 'description' => 'Project']], array_map(
+        $this->assertSame([['name' => 'shared', 'description' => 'Project'], ['name' => 'shared', 'description' => 'User']], array_map(
             static fn (Skill $skill): array => ['name' => $skill->name(), 'description' => $skill->description()],
             $repository->catalog(),
         ));
-        $this->assertSame($projectDocument, $repository->get('shared')->readDocument());
-        $this->assertSame($this->root.'/project/folder', $repository->get('shared')->location());
-        $this->assertSame('project guide for shared', $repository->get('shared')->readResource('guide.md'));
+        $this->assertSame($projectDocument, $repository->get('file://'.$this->root.'/project/folder/')->readDocument());
+        $this->assertSame('file://'.$this->root.'/project/folder/', $repository->get('file://'.$this->root.'/project/folder/')->location());
+        $this->assertSame('project guide for shared', $repository->get('file://'.$this->root.'/project/folder/')->readResource('guide.md'));
         $messages = array_column($repository->diagnostics(), 'message');
-        $this->assertContains('Skill "shared" is shadowed by an earlier candidate with the same name.', $messages);
+        $this->assertSame([], $messages);
         $reversed = new SkillRepository($user, $project);
-        $this->assertSame($userDocument, $reversed->get('shared')->readDocument());
-        $this->assertSame($this->root.'/user/folder', $reversed->get('shared')->location());
-        $this->assertSame('user guide for shared', $reversed->get('shared')->readResource('guide.md'));
+        $this->assertSame($userDocument, $reversed->get('file://'.$this->root.'/user/folder/')->readDocument());
+        $this->assertSame('file://'.$this->root.'/user/folder/', $reversed->get('file://'.$this->root.'/user/folder/')->location());
+        $this->assertSame('user guide for shared', $reversed->get('file://'.$this->root.'/user/folder/')->readResource('guide.md'));
         $this->expectException(RuntimeException::class);
-        $repository->get('shared')->readResource('user-only.md');
+        $repository->get('file://'.$this->root.'/project/folder/')->readResource('user-only.md');
     }
 
-    public function test_unusable_and_unreadable_candidates_allow_fallback_while_warnings_keep_precedence(): void
+    public function test_unusable_candidates_are_diagnosed_while_other_locations_remain_available(): void
     {
-        $primary = new TrackedSkillStorage([
+        $primary = new TrackedSkillStorage('memory://primary/', [
             'unreadable' => null,
             'invalid' => "---\nname: invalid\ndescription: []\n---\n",
             'z-last' => "---\nname: shared\ndescription: Last\n---\n",
             'a-first' => "---\nname: shared\ndescription: First\n---\n",
         ]);
-        $fallback = new TrackedSkillStorage([
+        $fallback = new TrackedSkillStorage('memory://secondary/', [
             'unreadable' => "---\nname: unreadable\ndescription: Recovered\n---\n",
             'invalid' => "---\nname: invalid\ndescription: Recovered\n---\n",
             'shared' => "---\nname: shared\ndescription: Fallback\n---\n",
@@ -171,13 +168,13 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $guidelines = $toolkit->guidelines() ?? '';
         $this->assertStringContainsString('shared: First', $guidelines);
-        $this->assertStringContainsString('location: unavailable', $guidelines);
+        $this->assertStringContainsString('location: memory://primary/a-first/', $guidelines);
         $this->assertStringContainsString('invalid: Recovered', $guidelines);
         $this->assertStringContainsString('unreadable: Recovered', $guidelines);
         [$activation, $resource] = $toolkit->tools();
-        $activation->setInputs(['name' => 'shared'])->execute();
+        $activation->setInputs(['location' => 'memory://primary/a-first/'])->execute();
         $this->assertStringContainsString('description: First', $activation->getResult());
-        $resource->setInputs(['name' => 'shared', 'path' => 'guide.md'])->execute();
+        $resource->setInputs(['location' => 'memory://primary/a-first/', 'path' => 'guide.md'])->execute();
         $this->assertSame('a-first/guide.md', $resource->getResult());
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $primary->documents['a-first'] = "---\nname: shared\ndescription: Changed\n---\nNew body";
@@ -190,8 +187,8 @@ class MultipleSkillStoragesTest extends TestCase
     public function test_multiple_empty_or_unusable_sources_provide_no_tools_or_guidelines(): void
     {
         $toolkit = new SkillToolkit(new SkillRepository(
-            new TrackedSkillStorage([]),
-            new TrackedSkillStorage(['broken' => 'invalid']),
+            new TrackedSkillStorage('memory://empty/', []),
+            new TrackedSkillStorage('memory://broken/', ['broken' => 'invalid']),
         ));
         $this->assertCount(0, $toolkit->tools());
         $this->assertNull($toolkit->guidelines());
@@ -202,18 +199,18 @@ class MultipleSkillStoragesTest extends TestCase
         $projectDocument = $this->skill('project', 'same-folder', 'writing', 'Write prose');
         $userDocument = $this->skill('user', 'same-folder', 'analysis', 'Analyse evidence');
         $toolkit = new SkillToolkit(new SkillRepository(
-            new FileSystemSkillStorage($this->root.'/project'),
-            new FileSystemSkillStorage($this->root.'/user'),
+            new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'),
+            new FileSystemSkillStorage('file://'.$this->root.'/user'.'/'),
         ));
         [$skill, $resource] = $toolkit->tools();
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
-                (new ToolCall($skill->getName(), 'writing'))->setInputs(['name' => 'writing']),
-                (new ToolCall($skill->getName(), 'analysis'))->setInputs(['name' => 'analysis']),
+                (new ToolCall($skill->getName(), 'writing'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder/']),
+                (new ToolCall($skill->getName(), 'analysis'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder/']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['name' => 'writing', 'path' => 'guide.md']),
-                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['name' => 'analysis', 'path' => 'guide.md']),
+                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder/', 'path' => 'guide.md']),
+                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder/', 'path' => 'guide.md']),
             ]),
             new AssistantMessage('Both skills loaded.'),
         );
@@ -245,22 +242,18 @@ class TrackedSkillStorage implements SkillStorageInterface
     public array $reads = [];
 
     /** @param array<string, ?string> $documents */
-    public function __construct(public array $documents)
+    public function __construct(private string $mount, public array $documents)
     {
     }
 
     public function list(): array
     {
-        return array_keys($this->documents);
-    }
-
-    public function location(string $skill): ?string
-    {
-        return null;
+        return array_map(fn (string $name): string => $this->mount.$name.'/', array_keys($this->documents));
     }
 
     public function read(string $skill, string $path): string
     {
+        $skill = basename($skill);
         $this->reads[] = $skill.'/'.$path;
         if ($path !== 'SKILL.md') {
             return $skill.'/'.$path;
