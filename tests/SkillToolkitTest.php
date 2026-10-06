@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Tests;
 
-use Closure;
 use LogicException;
 use RuntimeException;
 use NeuronAI\Agent\Agent;
@@ -21,7 +20,7 @@ use NeuronAI\Testing\FakeAIProvider;
 use NeuronAI\Testing\RequestRecord;
 use NeuronAI\Tools\ToolProperty;
 use NeuronAI\Tools\ToolOutput;
-use NeuronAI\Tools\Tool;
+use NeuronAI\Tools\Toolkits\FileSystem\BashTool;
 use NeuronAI\AgentSkills\Tools\SkillResourceTool;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 use NeuronAI\AgentSkills\Tools\SkillTool;
@@ -130,6 +129,54 @@ class SkillToolkitTest extends TestCase
             $record,
             file_get_contents($this->skillsRoot.'/writing/SKILL.md'),
         ));
+    }
+
+    public function test_encoded_catalog_location_loads_documents_and_resources_and_reports_confined_read_failures(): void
+    {
+        $directory = $this->skillsRoot.'/writing %25 café#';
+        rename($this->skillsRoot.'/writing', $directory);
+        file_put_contents($this->skillsRoot.'/secret.md', 'Outside secret.');
+        symlink($this->skillsRoot.'/secret.md', $directory.'/secret-link.md');
+        try {
+            $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+            $location = 'file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23/';
+            $provider = new FakeAIProvider(
+                new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => $location])]),
+                new ToolCallMessage(null, [new ToolCall('skill_resource', 'read', [
+                    'location' => $location, 'path' => 'references/style.md',
+                ])]),
+                new ToolCallMessage(null, [new ToolCall('skill_resource', 'parent', [
+                    'location' => $location, 'path' => '../secret.md',
+                ])]),
+                new ToolCallMessage(null, [new ToolCall('skill_resource', 'symlink', [
+                    'location' => $location, 'path' => 'secret-link.md',
+                ])]),
+                new ToolCallMessage(null, [new ToolCall('skill_resource', 'absolute', [
+                    'location' => $location, 'path' => 'file://'.$this->skillsRoot.'/secret.md',
+                ])]),
+                new AssistantMessage('The guide loaded; outside resources are unavailable.'),
+            );
+            Agent::make()->setThreadId('encoded-skills-test')->setAiProvider($provider)->addTool($toolkit)
+                ->chat(new UserMessage('Read the skill and supporting resources.'))->getMessage();
+
+            $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
+            $this->assertStringContainsString('writing: Write clear prose (location: '.$location.')', $prompt);
+            $this->assertStringContainsString('decode its path once to a native working directory', $prompt);
+            $this->assertStringContainsString('Remote locations do not imply executability.', $prompt);
+            foreach ([
+                file_get_contents($directory.'/SKILL.md'),
+                "# Style guide\n\nUse concrete words.\n",
+                'Resource "../secret.md" escapes skill "'.$location.'".',
+                'Resource "secret-link.md" escapes skill "'.$location.'".',
+                'Resource path "file://'.$this->skillsRoot.'/secret.md" is invalid.',
+            ] as $expected) {
+                $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, $expected));
+            }
+        } finally {
+            unlink($directory.'/secret-link.md');
+            unlink($this->skillsRoot.'/secret.md');
+            rename($directory, $this->skillsRoot.'/writing');
+        }
     }
 
     public function test_stream_loads_skills_and_resources_and_returns_the_final_message(): void
@@ -688,68 +735,66 @@ class SkillToolkitTest extends TestCase
 
     public function test_host_tool_executes_the_file_at_the_activated_location_with_neighboring_binary_asset(): void
     {
+        $directory = $this->skillsRoot.'/writing %25 café#';
+        rename($this->skillsRoot.'/writing', $directory);
         $asset = "binary\0asset\xff";
-        file_put_contents($this->skillsRoot.'/writing/references/value.bin', $asset);
-        $marker = $this->skillsRoot.'/writing/executed';
+        file_put_contents($directory.'/references/value.bin', $asset);
+        $marker = $directory.'/executed';
         $script = <<<'PHP'
             <?php
-            file_put_contents(__DIR__.'/../executed', 'yes');
-            echo hash('sha256', file_get_contents(__DIR__.'/../references/value.bin'));
+            file_put_contents('executed', 'yes');
+            echo hash('sha256', file_get_contents('references/value.bin'));
             PHP;
-        file_put_contents($this->skillsRoot.'/writing/scripts/check.php', $script);
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
-        $guidelines = $toolkit->guidelines() ?? '';
-        $location = 'file://'.$this->skillsRoot.'/writing/';
-        $this->assertStringContainsString('location: '.$location, $guidelines);
-        [$skillTool, $resourceTool] = $toolkit->tools();
-        $activation = (new ToolCall($skillTool->getName(), 'activate'))->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing/']);
-        // Host-owned execution: the library itself never launches the script.
-        $host = new class (function () use ($location, $marker): string {
-            $this->assertFileDoesNotExist($marker);
-            $nativePath = rawurldecode((string) parse_url($location, PHP_URL_PATH));
-            $this->assertSame($this->skillsRoot.'/writing/', $nativePath);
-            $process = proc_open([PHP_BINARY, $nativePath.'scripts/check.php'], [1 => ['pipe', 'w']], $pipes);
-            $this->assertIsResource($process);
-            $output = stream_get_contents($pipes[1]);
-            fclose($pipes[1]);
-            $this->assertSame(0, proc_close($process));
-            $this->assertIsString($output);
-            return $output;
-        }) extends Tool {
-            protected string $name = 'run_skill_check';
-            protected ?string $description = 'Run the permitted example check script.';
-
-            /** @param Closure(): string $callback */
-            public function __construct(private Closure $callback)
-            {
-            }
-
-            public function __invoke(): string
-            {
-                return ($this->callback)();
-            }
-        };
-        $provider = new FakeAIProvider(
-            new ToolCallMessage(null, [$activation]),
-            new ToolCallMessage(null, [(new ToolCall($resourceTool->getName(), 'read_script'))->setInputs([
-                'location' => 'file://'.$this->skillsRoot.'/writing/', 'path' => 'scripts/check.php',
-            ])]),
-            new ToolCallMessage(null, [(new ToolCall($host->getName(), 'host_check'))->setInputs([])]),
-            new AssistantMessage('Check complete.'),
-        );
+        file_put_contents($directory.'/scripts/check.php', $script);
         try {
+            $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
+            $toolkit = new SkillToolkit($repository);
+            $location = $repository->catalog()[0]->location();
+            $this->assertSame('file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23/', $location);
+            // A discovered local file URI is decoded once for the host execution tool.
+            $nativePath = rawurldecode((string) parse_url($location, PHP_URL_PATH));
+            $this->assertSame($directory.'/', $nativePath);
+            $host = new BashTool();
+            $provider = new FakeAIProvider(
+                new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => $location])]),
+                new ToolCallMessage(null, [new ToolCall('skill_resource', 'read_script', [
+                    'location' => $location, 'path' => 'scripts/check.php',
+                ])]),
+                new ToolCallMessage(null, [new ToolCall('bash', 'host_check', [
+                    'command' => escapeshellarg(PHP_BINARY).' scripts/check.php',
+                    'working_directory' => $nativePath,
+                ])]),
+                new AssistantMessage('Check complete.'),
+            );
             $this->assertFileDoesNotExist($marker);
             Agent::make()->setThreadId('skills-test')->setAiProvider($provider)->setInstructions('Run the permitted check.')
                 ->addTool($toolkit)->addTool($host)->chat(new UserMessage('Check the asset.'))->getMessage();
+
             $this->assertFileExists($marker);
             $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, $script));
-            $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, hash('sha256', $asset)));
+            $provider->assertSent(function (RequestRecord $record) use ($asset, $directory): bool {
+                foreach ($record->messages as $message) {
+                    if (!$message instanceof ToolResultMessage) {
+                        continue;
+                    }
+                    foreach ($message->getToolCalls() as $tool) {
+                        if ($tool->getName() === 'bash') {
+                            $result = json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR);
+                            return $result['status'] === 'success'
+                                && $result['output'] === hash('sha256', $asset)
+                                && $result['working_directory'] === $directory.'/';
+                        }
+                    }
+                }
+                return false;
+            });
             $this->assertStringNotContainsString($asset, $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '');
         } finally {
-            unlink($this->skillsRoot.'/writing/references/value.bin');
+            unlink($directory.'/references/value.bin');
             if (file_exists($marker)) {
                 unlink($marker);
             }
+            rename($directory, $this->skillsRoot.'/writing');
         }
     }
 
