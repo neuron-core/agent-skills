@@ -16,6 +16,8 @@ use NeuronAI\AgentSkills\Tests\Fixtures\TableSkillStorage;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
+use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
+use PDO;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 use NeuronAI\Testing\FakeAIProvider;
 use NeuronAI\Testing\RequestRecord;
@@ -65,12 +67,14 @@ class MultipleSkillStoragesTest extends TestCase
         $databaseDocument = "---\nname: caveman\ndescription: Database caveman\n---\nRead references/guide.md.\n";
         $localLocation = 'file://'.$this->root.'/project/caveman/';
         $databaseLocation = 'db://team/team%20caveman/';
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE skills (skill_name TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_name, path))');
+        $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
+        $insert->execute(['team caveman', 'SKILL.md', $databaseDocument]);
+        $insert->execute(['team caveman', 'references/guide.md', 'Database guide.']);
         $repository = new SkillRepository(
             new FileSystemSkillStorage('file://'.$this->root.'/project/'),
-            new TableSkillStorage('db://team/', [
-                ['skill_name' => 'team caveman', 'path' => 'SKILL.md', 'content' => $databaseDocument],
-                ['skill_name' => 'team caveman', 'path' => 'references/guide.md', 'content' => 'Database guide.'],
-            ]),
+            new DatabaseSkillStorage('db://team/', $pdo),
         );
         mkdir($this->root.'/project/caveman/references');
         file_put_contents($this->root.'/project/caveman/references/guide.md', 'Local guide.');
@@ -102,7 +106,7 @@ class MultipleSkillStoragesTest extends TestCase
             'database' => $databaseDocument,
             'local-guide' => 'Local guide.',
             'database-guide' => 'Database guide.',
-            'missing-guide' => 'Database resource "local-only.md" is unavailable in "'.$databaseLocation.'".',
+            'missing-guide' => 'Resource "local-only.md" was not found in skill "'.$databaseLocation.'".',
         ];
         foreach ($expectedResults as $id => $expected) {
             $provider->assertSent(static function (RequestRecord $request) use ($id, $expected): bool {

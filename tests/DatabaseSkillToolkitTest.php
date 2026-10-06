@@ -61,6 +61,9 @@ class DatabaseSkillToolkitTest extends TestCase
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', 'SKILL.md', $original]);
         $skill = $repository->get('db://team/writing/');
+        $toolkit = new SkillToolkit($repository);
+        $guidelines = $toolkit->guidelines();
+        [$activation, $resource] = $toolkit->tools();
         $insert->execute(['writing', 'guide.md', 'Newly available resource']);
         $updated = "---\nname: writing\ndescription: Updated summary\n---\nUpdated body";
         $pdo->prepare('UPDATE skills SET content = ? WHERE path = ?')->execute([$updated, 'SKILL.md']);
@@ -70,7 +73,27 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertSame($updated, $skill->readDocument());
         $this->assertSame('Newly available resource', $skill->readResource('guide.md'));
         $this->assertSame(['writing'], $repository->names());
+        $this->assertSame($guidelines, $toolkit->guidelines());
+        $activation->setInputs(['location' => 'db://team/writing/'])->execute();
+        $this->assertSame($updated, $activation->getResult());
+        $pdo->prepare('UPDATE skills SET content = ? WHERE path = ?')->execute(['Updated guide', 'guide.md']);
+        $resource->setInputs(['location' => 'db://team/writing/', 'path' => 'guide.md'])->execute();
+        $this->assertSame('Updated guide', $resource->getResult());
+        $this->assertSame('Updated guide', $skill->readResource('guide.md'));
+        $pdo->exec("DELETE FROM skills WHERE path = 'guide.md'");
+        $resource->execute();
+        $this->assertStringContainsString('was not found', $resource->getResult());
+        try {
+            $skill->readResource('guide.md');
+            $this->fail('Deleted resource must fail on demand.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('was not found', $exception->getMessage());
+        }
         $pdo->exec("DELETE FROM skills WHERE skill_name = 'writing'");
+        $activation->execute();
+        $this->assertStringContainsString('was not found', $activation->getResult());
+        $this->assertSame($guidelines, $toolkit->guidelines());
+        $this->assertSame('Original summary', $repository->get('db://team/writing/')->description());
         $this->expectException(RuntimeException::class);
         $skill->readDocument();
     }

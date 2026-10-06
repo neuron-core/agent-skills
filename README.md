@@ -248,12 +248,21 @@ The application owns schema, uniqueness constraints and updates; the adapter
 only reads and reports missing tables without creating them. Configure the
 schema to preserve distinct identifier and path spellings, including case, when
 enforcing uniqueness. The adapter must select the exact stored spelling even
-when database comparison defaults are case-insensitive.
+when database comparison defaults are case-insensitive. In SQLite, the example
+above uses the default `BINARY` collation. If your columns use `COLLATE NOCASE`,
+define the uniqueness constraint with
+`UNIQUE (skill_name COLLATE BINARY, path COLLATE BINARY)` so that `caveman` and
+`Caveman`, or `guide.md` and `Guide.md`, can coexist. Use the equivalent exact
+uniqueness rule for your database; the adapter cannot recover rows that the schema
+prevents you from storing. Requests preserve capitalization: `Guide.md` never
+reads `guide.md`.
 
 `skill_name` is a backend identifier; it may differ from the declared document
 name. With mount `db://team/`, identifier `team caveman` is discovered at
-`db://team/team%20caveman/`. Copy the catalog location verbatim into the tools and
-pass `references/guide.md` as a separate path. Paths are native text, so literal
+`db://team/team%20caveman/`. Identifier `literal%20name` becomes
+`db://team/literal%2520name/`, and `café` becomes `db://team/caf%C3%A9/`.
+Copy the catalog location verbatim into the tools and pass `references/guide.md`
+as a separate path. Paths are native text, so literal
 percent characters are not URI-decoded. Confined dot and parent segments work;
 absolute paths and paths escaping the selected skill fail.
 
@@ -262,10 +271,25 @@ connection and table expose the same rows under different locations. Use separat
 tables or databases for data isolation; the mount does not filter tenants. A
 filesystem skill with the same declared name remains independently selectable,
 and a missing database resource never falls back to that filesystem skill.
+For example, register both adapters on the same toolkit:
+
+```php
+$toolkit = SkillToolkit::make()->fromStorage(
+    new FileSystemSkillStorage('file:///app/skills/'),
+    new DatabaseSkillStorage('db://team/', $pdo),
+);
+```
+
+A local `caveman` and database `team caveman` may both declare `name: caveman`;
+select their separate catalog locations to load each original document and its
+own resources. Registering two database adapters that emit the same location
+fails discovery as a duplicate-location configuration error.
 
 Catalog metadata is discovered lazily and retained by the repository. Documents
 and supporting resources are read on demand; recreate the repository to discover
-new skills or update catalog metadata. PDO error modes are preserved. Expected
+new skills or update catalog metadata. Updated text is visible on the next read;
+deleted documents and resources fail even while their catalog metadata remains.
+PDO error modes and column-case settings are preserved. Expected
 access failures are `RuntimeException` for PHP callers and readable tool results.
 
 ## Error Handling

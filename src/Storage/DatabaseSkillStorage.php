@@ -25,7 +25,7 @@ class DatabaseSkillStorage implements SkillStorageInterface
     {
         $locations = [];
         foreach ($this->select('SELECT skill_name FROM '.$this->table) as $row) {
-            $locations[$this->mount.rawurlencode($row['skill_name']).'/'] = true;
+            $locations[$this->mount.rawurlencode($row[0]).'/'] = true;
         }
         return array_keys($locations);
     }
@@ -38,11 +38,15 @@ class DatabaseSkillStorage implements SkillStorageInterface
             throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
         }
         $path = $this->relativePath($path);
-        $rows = $this->select('SELECT content FROM '.$this->table.' WHERE skill_name = ? AND path = ?', [$skill, $path]);
+        // SQL narrows candidates; exact identity must not depend on database collation.
+        $rows = array_values(array_filter(
+            $this->select('SELECT skill_name, path, content FROM '.$this->table.' WHERE skill_name = ? AND path = ?', [$skill, $path]),
+            static fn (array $row): bool => $row[0] === $skill && $row[1] === $path,
+        ));
         if ($rows === []) {
             throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $path, $location));
         }
-        $content = $rows[0]['content'];
+        $content = $rows[0][2];
         if (!is_string($content) || str_contains($content, "\0") || preg_match('//u', $content) !== 1) {
             throw new RuntimeException(sprintf('Resource "%s" in skill "%s" contains unsupported binary content.', $path, $location));
         }
@@ -51,7 +55,7 @@ class DatabaseSkillStorage implements SkillStorageInterface
 
     /**
      * @param list<string> $parameters
-     * @return list<array<string, mixed>>
+     * @return list<list<mixed>>
      */
     private function select(string $sql, array $parameters = []): array
     {
@@ -62,7 +66,7 @@ class DatabaseSkillStorage implements SkillStorageInterface
             if ($statement === false || !@$statement->execute($parameters)) {
                 throw new RuntimeException($message);
             }
-            $rows = @$statement->fetchAll(PDO::FETCH_ASSOC);
+            $rows = @$statement->fetchAll(PDO::FETCH_NUM);
             if ($statement->errorCode() !== '00000') {
                 throw new RuntimeException($message);
             }

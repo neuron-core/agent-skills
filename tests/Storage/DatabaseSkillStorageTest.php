@@ -28,6 +28,15 @@ class DatabaseSkillStorageTest extends TestCase
         $this->assertSame('Guide', $storage->read('db://team/project/writing/', 'references/guide.md'));
     }
 
+    public function test_connection_column_case_setting_is_preserved(): void
+    {
+        $this->pdo->setAttribute(PDO::ATTR_CASE, PDO::CASE_UPPER);
+        $storage = new DatabaseSkillStorage('db://team/', $this->pdo);
+        $this->assertSame(['db://team/writing/'], $storage->list());
+        $this->assertSame('Guide', $storage->read('db://team/writing/', 'references/guide.md'));
+        $this->assertSame(PDO::CASE_UPPER, $this->pdo->getAttribute(PDO::ATTR_CASE));
+    }
+
     /** @dataProvider databaseFailureModes */
     public function test_missing_tables_fail_clearly_without_creating_them(int $mode, bool $read): void
     {
