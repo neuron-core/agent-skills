@@ -79,7 +79,9 @@ echo $response->getMessage()->getContent();
 The agent initially sees each skill's name, description and location. When a
 skill is relevant to the task, it uses `skill` to load its instructions. If those
 instructions reference supporting files, it can read them with `skill_resource`.
-Copy the catalog location verbatim into either tool. Pass resource paths
+Pass the declared skill name in `name` to `skill`. When names repeat, the first
+configured storage with a valid document wins; discovery order within that
+storage breaks ties. Copy the catalog location verbatim into `skill_resource`. Pass resource paths
 separately as literal paths relative to the skill root, even when found in a
 supporting document. For example, `references/my guide.md` selects that file;
 `references/my%20guide.md` selects a file whose name contains `%20`.
@@ -91,7 +93,7 @@ The toolkit registers two tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `skill` | Load the complete `SKILL.md` at a catalog `location`. |
+| `skill` | Load the complete `SKILL.md` by its declared `name`. |
 | `skill_resource` | Read `path` relative to the skill root selected by `location`. |
 
 Skills can also include scripts. To execute them, register an execution tool,

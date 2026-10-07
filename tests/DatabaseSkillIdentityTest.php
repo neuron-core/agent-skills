@@ -83,8 +83,8 @@ class DatabaseSkillIdentityTest extends TestCase
         foreach ($documents as $identifier => [$location, $document]) {
             $this->assertSame($location, $repository->get($location)->location());
             $this->assertStringContainsString('location: '.$location.')', $toolkit->guidelines() ?? '');
-            $activation->setInputs(['location' => $location])->execute();
-            $this->assertSame($document, $activation->getResult());
+            $activation->setInputs(['name' => 'caveman'])->execute();
+            $this->assertSame($documents['café'][1], $activation->getResult());
             $resource->setInputs(['location' => $location, 'path' => 'notes%20.md'])->execute();
             $this->assertSame('Literal percent resource for '.$identifier, $resource->getResult());
         }
@@ -112,7 +112,7 @@ class DatabaseSkillIdentityTest extends TestCase
         [$activation, $resource] = $toolkit->tools();
         foreach (['db://first/writing', 'db://second/writing'] as $location) {
             $this->assertStringContainsString('Shared table (location: '.$location.')', $toolkit->guidelines() ?? '');
-            $activation->setInputs(['location' => $location])->execute();
+            $activation->setInputs(['name' => 'writing'])->execute();
             $this->assertSame($document, $activation->getResult());
             $resource->setInputs(['location' => $location, 'path' => 'guide.md'])->execute();
             $this->assertSame('Shared guide', $resource->getResult());
