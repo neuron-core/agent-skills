@@ -9,7 +9,7 @@ use RuntimeException;
 interface SkillStorageInterface
 {
     /**
-     * Return complete canonical skill-root locations, with a trailing slash.
+     * Return complete canonical skill-root locations, without a trailing slash.
      *
      * @return string[]
      */

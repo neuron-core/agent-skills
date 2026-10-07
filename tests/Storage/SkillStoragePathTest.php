@@ -55,7 +55,7 @@ class SkillStoragePathTest extends TestCase
         $storage = $this->storage($backend);
         $location = $storage->list()[0];
 
-        $this->assertStringEndsWith('/my%20skill/', $location);
+        $this->assertStringEndsWith('/my%20skill', $location);
         $this->assertSame($expected, $storage->read($location, $path));
     }
 

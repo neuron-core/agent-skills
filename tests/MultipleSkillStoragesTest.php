@@ -65,8 +65,8 @@ class MultipleSkillStoragesTest extends TestCase
         $localDocument = $this->skill('project', 'caveman', 'caveman', 'Local caveman');
         file_put_contents($this->root.'/project/caveman/local-only.md', 'Local content must not leak.');
         $databaseDocument = "---\nname: caveman\ndescription: Database caveman\n---\nRead references/guide.md.\n";
-        $localLocation = 'file://'.$this->root.'/project/caveman/';
-        $databaseLocation = 'db://team/team%20caveman/';
+        $localLocation = 'file://'.$this->root.'/project/caveman';
+        $databaseLocation = 'db://team/team%20caveman';
         $pdo = new PDO('sqlite::memory:');
         $pdo->exec('CREATE TABLE skills (skill_identifier TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL, UNIQUE(skill_identifier, path))');
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
@@ -127,7 +127,7 @@ class MultipleSkillStoragesTest extends TestCase
         $repository->get($databaseLocation)->readResource('local-only.md');
     }
 
-    public function test_overlapping_mounts_with_distinct_locations_route_to_their_owners(): void
+    public function test_overlapping_base_uris_with_distinct_locations_route_to_their_owners(): void
     {
         $outer = "---\nname: shared\ndescription: Outer\n---\nOuter document";
         $inner = "---\nname: shared\ndescription: Inner\n---\nInner document";
@@ -140,7 +140,7 @@ class MultipleSkillStoragesTest extends TestCase
             ]),
         );
         [$activation] = $toolkit->tools();
-        foreach (['db://team/nested/' => $outer, 'db://team/nested/child/' => $inner] as $location => $document) {
+        foreach (['db://team/nested' => $outer, 'db://team/nested/child' => $inner] as $location => $document) {
             $this->assertStringContainsString('location: '.$location, $toolkit->guidelines() ?? '');
             $activation->setInputs(['location' => $location])->execute();
             $this->assertSame($document, $activation->getResult());
@@ -154,7 +154,7 @@ class MultipleSkillStoragesTest extends TestCase
         ]);
         $toolkit = SkillToolkit::make()->fromStorage($storage, $storage);
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Duplicate skill location "db://team/caveman/".');
+        $this->expectExceptionMessage('Duplicate skill location "db://team/caveman".');
         $toolkit->tools();
     }
 
@@ -164,18 +164,18 @@ class MultipleSkillStoragesTest extends TestCase
         $this->skill('user', '123', "'123'", 'User');
         $project = new FileSystemSkillStorage('file://'.$this->root.'/project'.'/');
         $user = new FileSystemSkillStorage('file://'.$this->root.'/user'.'/');
-        $this->assertSame(['file://'.$this->root.'/project/123/'], $project->list());
+        $this->assertSame(['file://'.$this->root.'/project/123'], $project->list());
         foreach ([
             new SkillToolkit(new SkillRepository($project)),
             new SkillToolkit(new SkillRepository($project, $user)),
             SkillToolkit::make()->fromStorage($project),
             SkillToolkit::make()->fromStorage($project, $user),
         ] as $toolkit) {
-            $this->assertStringContainsString('Project (location: file://'.$this->root.'/project/123/)', $toolkit->guidelines() ?? '');
+            $this->assertStringContainsString('Project (location: file://'.$this->root.'/project/123)', $toolkit->guidelines() ?? '');
             [$activation, $resource] = $toolkit->tools();
-            $activation->setInputs(['location' => 'file://'.$this->root.'/project/123/'])->execute();
+            $activation->setInputs(['location' => 'file://'.$this->root.'/project/123'])->execute();
             $this->assertSame($projectDocument, $activation->getResult());
-            $resource->setInputs(['location' => 'file://'.$this->root.'/project/123/', 'path' => 'guide.md'])->execute();
+            $resource->setInputs(['location' => 'file://'.$this->root.'/project/123', 'path' => 'guide.md'])->execute();
             $this->assertSame("project guide for '123'", $resource->getResult());
         }
     }
@@ -195,11 +195,11 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertCount(0, $toolkit->tools());
 
         $repository->addStorage(new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'));
-        $selected = $repository->get('file://'.$this->root.'/project/shared/');
+        $selected = $repository->get('file://'.$this->root.'/project/shared');
         $this->assertSame($toolkit, $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/user'.'/')));
-        $this->assertSame($selected, $repository->get('file://'.$this->root.'/project/shared/'));
+        $this->assertSame($selected, $repository->get('file://'.$this->root.'/project/shared'));
         $this->assertSame($projectDocument, $selected->readDocument());
-        $this->assertSame($userDocument, $repository->get('file://'.$this->root.'/user/extra/')->readDocument());
+        $this->assertSame($userDocument, $repository->get('file://'.$this->root.'/user/extra')->readDocument());
         $this->assertSame(['shared', 'extra', 'shared'], $repository->names());
         $this->assertSame([], $repository->diagnostics());
         $this->assertStringContainsString('shared: Project', $toolkit->guidelines() ?? '');
@@ -219,7 +219,7 @@ class MultipleSkillStoragesTest extends TestCase
         $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/user'.'/'));
 
         [$activation] = $toolkit->tools();
-        $activation->setInputs(['location' => 'file://'.$this->root.'/project/shared/'])->execute();
+        $activation->setInputs(['location' => 'file://'.$this->root.'/project/shared'])->execute();
         $this->assertSame($projectDocument, $activation->getResult());
     }
 
@@ -236,17 +236,17 @@ class MultipleSkillStoragesTest extends TestCase
             static fn (Skill $skill): array => ['name' => $skill->name(), 'description' => $skill->description()],
             $repository->catalog(),
         ));
-        $this->assertSame($projectDocument, $repository->get('file://'.$this->root.'/project/folder/')->readDocument());
-        $this->assertSame('file://'.$this->root.'/project/folder/', $repository->get('file://'.$this->root.'/project/folder/')->location());
-        $this->assertSame('project guide for shared', $repository->get('file://'.$this->root.'/project/folder/')->readResource('guide.md'));
+        $this->assertSame($projectDocument, $repository->get('file://'.$this->root.'/project/folder')->readDocument());
+        $this->assertSame('file://'.$this->root.'/project/folder', $repository->get('file://'.$this->root.'/project/folder')->location());
+        $this->assertSame('project guide for shared', $repository->get('file://'.$this->root.'/project/folder')->readResource('guide.md'));
         $messages = array_column($repository->diagnostics(), 'message');
         $this->assertSame([], $messages);
         $reversed = new SkillRepository($user, $project);
-        $this->assertSame($userDocument, $reversed->get('file://'.$this->root.'/user/folder/')->readDocument());
-        $this->assertSame('file://'.$this->root.'/user/folder/', $reversed->get('file://'.$this->root.'/user/folder/')->location());
-        $this->assertSame('user guide for shared', $reversed->get('file://'.$this->root.'/user/folder/')->readResource('guide.md'));
+        $this->assertSame($userDocument, $reversed->get('file://'.$this->root.'/user/folder')->readDocument());
+        $this->assertSame('file://'.$this->root.'/user/folder', $reversed->get('file://'.$this->root.'/user/folder')->location());
+        $this->assertSame('user guide for shared', $reversed->get('file://'.$this->root.'/user/folder')->readResource('guide.md'));
         $this->expectException(RuntimeException::class);
-        $repository->get('file://'.$this->root.'/project/folder/')->readResource('user-only.md');
+        $repository->get('file://'.$this->root.'/project/folder')->readResource('user-only.md');
     }
 
     public function test_unusable_candidates_are_diagnosed_while_other_locations_remain_available(): void
@@ -269,13 +269,13 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $guidelines = $toolkit->guidelines() ?? '';
         $this->assertStringContainsString('shared: First', $guidelines);
-        $this->assertStringContainsString('location: memory://primary/a-first/', $guidelines);
+        $this->assertStringContainsString('location: memory://primary/a-first', $guidelines);
         $this->assertStringContainsString('invalid: Recovered', $guidelines);
         $this->assertStringContainsString('unreadable: Recovered', $guidelines);
         [$activation, $resource] = $toolkit->tools();
-        $activation->setInputs(['location' => 'memory://primary/a-first/'])->execute();
+        $activation->setInputs(['location' => 'memory://primary/a-first'])->execute();
         $this->assertStringContainsString('description: First', $activation->getResult());
-        $resource->setInputs(['location' => 'memory://primary/a-first/', 'path' => 'guide.md'])->execute();
+        $resource->setInputs(['location' => 'memory://primary/a-first', 'path' => 'guide.md'])->execute();
         $this->assertSame('a-first/guide.md', $resource->getResult());
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $primary->documents['a-first'] = "---\nname: shared\ndescription: Changed\n---\nNew body";
@@ -306,12 +306,12 @@ class MultipleSkillStoragesTest extends TestCase
         [$skill, $resource] = $toolkit->tools();
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
-                (new ToolCall($skill->getName(), 'writing'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder/']),
-                (new ToolCall($skill->getName(), 'analysis'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder/']),
+                (new ToolCall($skill->getName(), 'writing'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder']),
+                (new ToolCall($skill->getName(), 'analysis'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder/', 'path' => 'guide.md']),
-                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder/', 'path' => 'guide.md']),
+                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder', 'path' => 'guide.md']),
+                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder', 'path' => 'guide.md']),
             ]),
             new AssistantMessage('Both skills loaded.'),
         );
@@ -343,18 +343,18 @@ class TrackedSkillStorage implements SkillStorageInterface
     public array $reads = [];
 
     /** @param array<string, ?string> $documents */
-    public function __construct(private string $mount, public array $documents)
+    public function __construct(private string $baseUri, public array $documents)
     {
     }
 
     public function list(): array
     {
-        return array_map(fn (string $name): string => $this->mount.$name.'/', array_keys($this->documents));
+        return array_map(fn (string $name): string => $this->baseUri.$name, array_keys($this->documents));
     }
 
     public function read(string $location, string $path): string
     {
-        $skill = substr($location, strlen($this->mount), -1);
+        $skill = substr($location, strlen($this->baseUri));
         $this->reads[] = $skill.'/'.$path;
         if ($path !== 'SKILL.md') {
             return $skill.'/'.$path;

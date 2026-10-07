@@ -34,7 +34,7 @@ class DatabaseExampleTest extends TestCase
         $repository = new SkillRepository(new DatabaseSkillStorage(new PDO('sqlite:'.$this->database)));
 
         $this->assertSame(['dante'], $repository->names());
-        $skill = $repository->get('db://skills/dante/');
+        $skill = $repository->get('db://skills/dante');
         $this->assertStringContainsString('references/terzina.md', $skill->readDocument());
         $this->assertStringNotContainsString('lanterna di rame', $skill->readDocument());
         $this->assertStringContainsString('lanterna di rame', $skill->readResource('references/terzina.md'));

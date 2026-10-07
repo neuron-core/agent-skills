@@ -41,9 +41,9 @@ wording, paths and results can vary on your machine.
 ```text
 $ php demo.php
 Available skills:
-- php-check: ... (location: file:///app/examples/skills/php-check/)
-- caveman: ... (location: file:///app/examples/.agents/skills/caveman/)
-- dante: ... (location: db://skills/dante/)
+- php-check: ... (location: file:///app/examples/skills/php-check)
+- caveman: ... (location: file:///app/examples/.agents/skills/caveman)
+- dante: ... (location: db://skills/dante)
 Use a skill when the user requests it or it is relevant to the task. ...
 
 See examples/README.md for setup and scenarios.
@@ -52,7 +52,7 @@ Type a message, or 'exit' to quit.
 
 > use caveman skill to explain the universe
 
-[tool: skill {"location":"file:///app/examples/.agents/skills/caveman/"}]
+[tool: skill {"location":"file:///app/examples/.agents/skills/caveman"}]
 
 Universe explain: space-time is a dynamical stage; matter/energy tells it how to curve; curvature tells matter/energy how to move.
 
@@ -73,9 +73,9 @@ Good.
 
 > now use php-check skill and explain the results
 
-[tool: skill {"location":"file:///app/examples/skills/php-check/"}]
+[tool: skill {"location":"file:///app/examples/skills/php-check"}]
 
-[tool: skill_resource {"location":"file:///app/examples/skills/php-check/","path":"references/checks.md"}]
+[tool: skill_resource {"location":"file:///app/examples/skills/php-check","path":"references/checks.md"}]
 
 [tool: bash {"command":"php scripts/check.php","working_directory":"/app/examples/skills/php-check"}]
 
@@ -106,16 +106,15 @@ ok
 executes the bundled script. The tools copy the complete catalog location and
 pass literal resource paths separately. The execution tool uses the decoded
 native local path as its working directory, not the `file:///` URI. Use
-`rtrim(rawurldecode(substr($location, 7)), '/')` to decode a local catalog location once:
-`file:///app/my%20skills/check%2520/` has the native directory
+`rawurldecode(substr($location, 7))` to decode a local catalog location once:
+`file:///app/my%20skills/check%2520` has the native directory
 `/app/my skills/check%20`. This lets relative script paths and neighboring assets
 resolve from the skill directory. Remote locations do not provide local execution
 access. The skill tools themselves only read text.
 
 The demo passes absolute directories under `__DIR__` to `FileSystemSkillStorage`,
-which constructs file mounts internally. File mounts
-use an empty host and an absolute path; hosts, queries and fragments are
-unsupported. See the
+which constructs file base URIs internally. These use an empty host and an
+absolute path. See the
 [filesystem URI rules](../README.md#how-skills-work) for accepted forms and
 symlink boundaries.
 
@@ -128,7 +127,7 @@ The SQLite `dante` skill has one short reference file. Start
 `php demo.php` and ask: **“Usa dante: scrivi una terzina
 su un viandante nella selva.”**
 
-The trace should show `skill` with location `db://skills/dante/`, followed by
+The trace should show `skill` with location `db://skills/dante`, followed by
 `skill_resource` with the same location and path `references/terzina.md`.
 The second verse should contain `lanterna di rame`, which appears only in the
 database reference.
@@ -169,10 +168,10 @@ The interactive demo constructs its own PDO connection and passes it to
 `skill_resource` tools then read the document and its reference.
 
 The default base URI `db://skills/` is a public address for all skills in the selected
-table. It is neither a connection string nor a tenant filter. Two mounts over
+table. It is neither a connection string nor a tenant filter. Two base URIs over
 the same connection and table expose the same rows at different addresses. Use
 separate tables or databases for data isolation. To read an application-managed
-alternative table, pass its name as the third argument:
+alternative table, pass its name using the `table` argument:
 
 ```php
 $storage = new DatabaseSkillStorage($pdo, table: 'team_skills', baseUri: 'db://team/');

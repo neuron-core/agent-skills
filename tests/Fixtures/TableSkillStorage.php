@@ -17,12 +17,12 @@ class TableSkillStorage implements SkillStorageInterface
     private ResourceLocator $resourceLocator;
 
     /** @param list<array{skill_identifier: string, path: string, content: string}> $rows */
-    public function __construct(string $mount, array $rows)
+    public function __construct(string $baseUri, array $rows)
     {
-        if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $mount) !== 1) {
-            throw new InvalidArgumentException('Expected a complete db:// mount ending in a slash.');
+        if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $baseUri) !== 1) {
+            throw new InvalidArgumentException('Expected a complete db:// base URI ending in a slash.');
         }
-        $this->resourceLocator = new ResourceLocator($mount);
+        $this->resourceLocator = new ResourceLocator($baseUri);
         foreach ($rows as $row) {
             $location = $this->resourceLocator->fromSkillIdentifier($row['skill_identifier']);
             if (isset($this->resources[$location][$row['path']])) {

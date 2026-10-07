@@ -33,9 +33,9 @@ class DatabaseSkillToolkitTest extends TestCase
         $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $toolkit = new SkillToolkit($repository);
         $provider = new FakeAIProvider(
-            new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => 'db://team/editorial/'])]),
+            new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => 'db://team/editorial'])]),
             new ToolCallMessage(null, [new ToolCall('skill_resource', 'guide', [
-                'location' => 'db://team/editorial/', 'path' => 'references/guide.md',
+                'location' => 'db://team/editorial', 'path' => 'references/guide.md',
             ])]),
             new AssistantMessage('Ready to write.'),
         );
@@ -44,12 +44,12 @@ class DatabaseSkillToolkitTest extends TestCase
 
         $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clearly', $prompt);
-        $this->assertStringContainsString('location: db://team/editorial/', $prompt);
+        $this->assertStringContainsString('location: db://team/editorial', $prompt);
         $this->assertStringNotContainsString('Prefer concrete words.', $prompt);
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, $document));
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, 'Prefer concrete words.'));
         $this->assertCount(1, $repository->catalog());
-        $this->assertEquals((object) ['author' => 'Human'], $repository->get('db://team/editorial/')->readFrontmatter()->metadata);
+        $this->assertEquals((object) ['author' => 'Human'], $repository->get('db://team/editorial')->readFrontmatter()->metadata);
     }
 
     public function test_catalog_is_lazy_and_retained_while_content_is_read_on_demand(): void
@@ -60,7 +60,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $original = "---\nname: writing\ndescription: Original summary\n---\nOriginal body";
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', 'SKILL.md', $original]);
-        $skill = $repository->get('db://team/writing/');
+        $skill = $repository->get('db://team/writing');
         $toolkit = new SkillToolkit($repository);
         $guidelines = $toolkit->guidelines();
         [$activation, $resource] = $toolkit->tools();
@@ -74,10 +74,10 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertSame('Newly available resource', $skill->readResource('guide.md'));
         $this->assertSame(['writing'], $repository->names());
         $this->assertSame($guidelines, $toolkit->guidelines());
-        $activation->setInputs(['location' => 'db://team/writing/'])->execute();
+        $activation->setInputs(['location' => 'db://team/writing'])->execute();
         $this->assertSame($updated, $activation->getResult());
         $pdo->prepare('UPDATE skills SET content = ? WHERE path = ?')->execute(['Updated guide', 'guide.md']);
-        $resource->setInputs(['location' => 'db://team/writing/', 'path' => 'guide.md'])->execute();
+        $resource->setInputs(['location' => 'db://team/writing', 'path' => 'guide.md'])->execute();
         $this->assertSame('Updated guide', $resource->getResult());
         $this->assertSame('Updated guide', $skill->readResource('guide.md'));
         $pdo->exec("DELETE FROM skills WHERE path = 'guide.md'");
@@ -93,7 +93,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $activation->execute();
         $this->assertStringContainsString('was not found', $activation->getResult());
         $this->assertSame($guidelines, $toolkit->guidelines());
-        $this->assertSame('Original summary', $repository->get('db://team/writing/')->description());
+        $this->assertSame('Original summary', $repository->get('db://team/writing')->description());
         $this->expectException(RuntimeException::class);
         $skill->readDocument();
     }
@@ -126,23 +126,23 @@ class DatabaseSkillToolkitTest extends TestCase
         ]);
         $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         [$activation, $resource] = (new SkillToolkit($repository))->tools();
-        $resource->setInputs(['location' => 'db://team/writing/', 'path' => 'missing.md'])->execute();
+        $resource->setInputs(['location' => 'db://team/writing', 'path' => 'missing.md'])->execute();
         $this->assertStringContainsString('was not found', $resource->getResult());
-        $resource->setInputs(['location' => 'db://team/writing/', 'path' => '../other.md'])->execute();
+        $resource->setInputs(['location' => 'db://team/writing', 'path' => '../other.md'])->execute();
         $this->assertStringContainsString('escapes', $resource->getResult());
-        $activation->setInputs(['location' => 'db://team/unknown/'])->execute();
+        $activation->setInputs(['location' => 'db://team/unknown'])->execute();
         $result = $activation->getResult();
         $this->assertInstanceOf(ToolOutput::class, $result);
         $this->assertTrue($result->isError());
         $this->assertStringContainsString('must be one of', $result->getText());
         $pdo->exec('DROP TABLE skills');
-        $activation->setInputs(['location' => 'db://team/writing/'])->execute();
+        $activation->setInputs(['location' => 'db://team/writing'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', $activation->getResult());
-        $resource->setInputs(['location' => 'db://team/writing/', 'path' => 'guide.md'])->execute();
+        $resource->setInputs(['location' => 'db://team/writing', 'path' => 'guide.md'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', $resource->getResult());
 
         $this->expectException(RuntimeException::class);
-        $repository->get('db://team/writing/')->readResource('guide.md');
+        $repository->get('db://team/writing')->readResource('guide.md');
     }
 
     private function createSkillsTable(PDO $pdo): void

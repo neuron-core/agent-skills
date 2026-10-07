@@ -6,10 +6,10 @@ namespace NeuronAI\AgentSkills;
 
 use RuntimeException;
 
-/** Locate skill resources under one mount. */
+/** Locate skill resources under one base URI. */
 final class ResourceLocator
 {
-    public function __construct(private string $mount)
+    public function __construct(private string $baseUri)
     {
     }
 
@@ -23,13 +23,13 @@ final class ResourceLocator
             throw new RuntimeException('Skill identifiers must be single path segments.');
         }
 
-        return $this->mount.rawurlencode($identifier).'/';
+        return $this->baseUri.rawurlencode($identifier);
     }
 
     public function resolve(string $location, string $path): ResourceReference
     {
-        if (str_starts_with($location, $this->mount) && str_ends_with($location, '/')) {
-            $encodedIdentifier = substr($location, strlen($this->mount), -1);
+        if (str_starts_with($location, $this->baseUri)) {
+            $encodedIdentifier = substr($location, strlen($this->baseUri));
             $identifier = rawurldecode($encodedIdentifier);
 
             if ($this->isSingleSegment($identifier)
