@@ -60,6 +60,59 @@ class FileSystemSkillStorage implements SkillStorageInterface
         return $locations;
     }
 
+    public function resources(string $location): array
+    {
+        $resource = $this->resourceLocator->resolve($location, 'SKILL.md');
+        $directory = realpath($this->baseDir.'/'.$resource->skillIdentifier);
+        if ($directory === false || !is_dir($directory)) {
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
+        }
+
+        $paths = $this->collectResources($location, $directory, '', []);
+        sort($paths, SORT_STRING);
+
+        return $paths;
+    }
+
+    /**
+     * @param list<string> $ancestors
+     * @return list<string>
+     */
+    private function collectResources(string $location, string $root, string $relative, array $ancestors): array
+    {
+        $directory = $relative === '' ? $root : $root.'/'.$relative;
+        $canonical = realpath($directory);
+        if ($canonical === false || in_array($canonical, $ancestors, true)) {
+            return [];
+        }
+
+        $ancestors[] = $canonical;
+        $paths = [];
+
+        foreach (new FilesystemIterator($directory) as $entry) {
+            $path = $relative === '' ? $entry->getFilename() : $relative.'/'.$entry->getFilename();
+            $this->resourceLocator->resolve($location, $path);
+            $target = realpath($entry->getPathname());
+            if ($target === false) {
+                throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $path, $location));
+            }
+
+            if ($target !== $root && !str_starts_with($target, rtrim($root, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)) {
+                throw new RuntimeException(sprintf('Resource "%s" escapes skill "%s".', $path, $location));
+            }
+
+            if ($entry->isDir()) {
+                array_push($paths, ...$this->collectResources($location, $root, $path, $ancestors));
+            } elseif ($entry->isFile()) {
+                $paths[] = $path;
+            } else {
+                throw new RuntimeException(sprintf('Resource "%s" in skill "%s" is not a file.', $path, $location));
+            }
+        }
+
+        return $paths;
+    }
+
     public function read(string $location, string $path): string
     {
         $resource = $this->resourceLocator->resolve($location, $path);

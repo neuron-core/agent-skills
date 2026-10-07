@@ -80,6 +80,11 @@ class SkillRepositoryTest extends TestCase
         $storage = new class ([]) extends InMemorySkillStorage {
             public bool $broken = true;
 
+            public function resources(string $location): array
+            {
+                throw new LogicException('Storage failed unexpectedly.');
+            }
+
             public function read(string $location, string $path): string
             {
                 if ($location === 'memory://skills/z-broken' && $path === 'SKILL.md' && $this->broken) {
@@ -461,6 +466,11 @@ class SkillRepositoryTest extends TestCase
                 return ['memory://skills/broken'];
             }
 
+            public function resources(string $location): array
+            {
+                throw new LogicException('Storage failed unexpectedly.');
+            }
+
             public function read(string $location, string $path): string
             {
                 throw new LogicException('Storage failed unexpectedly.');
@@ -493,6 +503,13 @@ class InMemorySkillStorage implements SkillStorageInterface
     {
         ++$this->listCalls;
         return array_map(static fn (string $name): string => 'memory://skills/'.$name, array_keys($this->files));
+    }
+
+    public function resources(string $location): array
+    {
+        $skill = substr($location, strlen('memory://skills/'));
+
+        return array_keys($this->files[$skill] ?? throw new RuntimeException('Skill unavailable.'));
     }
 
     public function read(string $location, string $path): string

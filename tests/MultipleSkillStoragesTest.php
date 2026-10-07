@@ -234,7 +234,7 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertSame([], $repository->diagnostics());
         $this->assertStringContainsString('shared: Project', $toolkit->guidelines() ?? '');
         $this->assertStringContainsString('extra: Extra', $toolkit->guidelines() ?? '');
-        $this->assertCount(2, $toolkit->tools());
+        $this->assertCount(3, $toolkit->tools());
     }
 
     public function test_repeated_storage_configuration_preserves_exact_selection(): void
@@ -380,6 +380,11 @@ class TrackedSkillStorage implements SkillStorageInterface
     public function list(): array
     {
         return array_map(fn (string $name): string => $this->baseUri.$name, array_keys($this->documents));
+    }
+
+    public function resources(string $location): array
+    {
+        return ['SKILL.md'];
     }
 
     public function read(string $location, string $path): string

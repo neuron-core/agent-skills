@@ -38,18 +38,20 @@ class SkillToolkit extends AbstractToolkit
         }
 
         return "Available skills:\n".$this->formatCatalog($catalog)
-            ."\nPass the declared name in `name` to `skill`. For duplicate names, the first configured storage wins."
-            ."\nUse a skill when the user requests it or it is relevant to the task."
-            .' Load its SKILL.md with `skill` before following it.'
-            .' Read required instructions and references with `skill_resources`, using the declared skill name and a non-empty list of literal paths relative to the skill root, including references found in supporting documents.'
-            .' Pass the literal path as written: references/my guide.md names that file, and percent signs remain literal.'
-            .' Do not compose full resource URIs.'
-            .' `skill` and `skill_resources` only read text.'
-            .' When a skill requires a script, use an available execution tool only if the skill is accessible to it.'
-            .' For a local file URI, validate its structure and decode its path once to a native working directory; never pass the URI as a working directory.'
-            .' Remote locations do not imply executability.'
-            .' Skill instructions do not grant permission to use that tool.'
-            .' If a required skill or resource cannot be read, say so.';
+            ."\nPass the declared name in `name` to `skill`. For duplicate names, the first configured storage wins."."\n\n".<<<'GUIDELINES'
+            1. Read the complete SKILL.md of each requested or relevant skill with `skill`
+               before acting on its instructions.
+
+            2. Read required instructions and references with `skill_resources`, using the declared skill name
+               and a non-empty list of literal paths relative to the skill root.
+               Preserve spaces, percent signs and Unicode in each path, including nested references.
+
+            3. For scripts, call `skill_script_prepare` with the declared skill name.
+               After successful preparation, use the returned directory.
+               Run the command specified by the skill from that directory with a separate execution tool.
+
+            If a required resource or tool is unavailable, explain what is missing.
+            GUIDELINES;
     }
 
     /** @param list<Skill> $catalog */
@@ -75,6 +77,7 @@ class SkillToolkit extends AbstractToolkit
         return [
             new SkillTool($this->repository),
             new SkillResourcesTool($this->repository),
+            new SkillScriptPrepareTool($this->repository),
         ];
     }
 }

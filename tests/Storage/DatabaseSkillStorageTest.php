@@ -20,6 +20,45 @@ class DatabaseSkillStorageTest extends TestCase
         $this->pdo->exec("INSERT INTO skills VALUES ('writing', 'SKILL.md', 'Document'), ('writing', 'references/guide.md', 'Guide')");
     }
 
+    public function test_resources_use_the_selected_identifier_and_table(): void
+    {
+        $this->pdo->exec("INSERT INTO skills VALUES ('other', 'secret.md', 'Other')");
+        $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute(['writing', 'assets/città %20.bin', "\0\xff"]);
+        $this->pdo->exec('ALTER TABLE skills RENAME TO team_skills');
+        $storage = new DatabaseSkillStorage($this->pdo, table: 'team_skills', baseUri: 'db://team/');
+
+        $this->assertSame(['SKILL.md', 'assets/città %20.bin', 'references/guide.md'], $storage->resources('db://team/writing'));
+    }
+
+    public function test_resource_enumeration_rejects_unknown_skills(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('is not available');
+        (new DatabaseSkillStorage($this->pdo))->resources('db://skills/unknown');
+    }
+
+    public function test_resource_enumeration_rejects_other_storage_locations(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('is not available');
+        (new DatabaseSkillStorage($this->pdo))->resources('db://other/writing');
+    }
+
+    /** @dataProvider invalidPaths */
+    public function test_resource_enumeration_rejects_invalid_stored_paths(string $path): void
+    {
+        $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute(['writing', $path, 'Invalid']);
+        $this->expectException(RuntimeException::class);
+        (new DatabaseSkillStorage($this->pdo))->resources('db://skills/writing');
+    }
+
+    public function test_resource_enumeration_reports_database_failures(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('could not be read');
+        (new DatabaseSkillStorage($this->pdo, table: 'missing'))->resources('db://skills/writing');
+    }
+
     public function test_default_base_uri_addresses_skills(): void
     {
         $storage = new DatabaseSkillStorage($this->pdo);
