@@ -3,9 +3,9 @@
 /.phpunit.cache/
 /.phpstan.cache/
 /examples/.env
+/examples/*.sqlite
 .agents
 .claude
 .codex
 .pi
 .idea
-/examples/skills.sqlite
