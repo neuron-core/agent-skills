@@ -30,6 +30,8 @@ class SkillRepositoryTest extends TestCase
 
         if ($accessor === 'get') {
             $repository->get('memory://skills/writing/');
+        } elseif ($accessor === 'findByName') {
+            $repository->findByName('writing');
         } else {
             $repository->{$accessor}();
         }
@@ -50,6 +52,10 @@ class SkillRepositoryTest extends TestCase
         $this->assertCount(0, $later->reads);
         $this->assertSame(['writing', 'extra', 'writing'], $repository->names());
         $this->assertSame($selected, $repository->get('memory://skills/writing/'));
+        $this->assertSame([
+            $selected,
+            $repository->get('memory://skills/other-writing/'),
+        ], $repository->findByName('writing'));
         $this->assertSame(1, $storage->listCalls);
         $this->assertSame([['writing', 'SKILL.md']], $storage->reads);
         $this->assertSame(1, $later->listCalls);
@@ -64,6 +70,7 @@ class SkillRepositoryTest extends TestCase
             'catalog' => ['catalog'],
             'names' => ['names'],
             'get' => ['get'],
+            'findByName' => ['findByName'],
             'diagnostics' => ['diagnostics'],
         ];
     }
@@ -235,6 +242,42 @@ class SkillRepositoryTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Skill "writing" is not available.');
         $repository->get('writing');
+    }
+
+    /**
+     * @dataProvider nameSearches
+     * @param list<string> $locations
+     */
+    public function test_find_by_name_returns_all_exact_declared_name_matches(string $name, array $locations): void
+    {
+        $repository = new SkillRepository(
+            new InMemorySkillStorage([
+                'a-unrelated' => ['SKILL.md' => "---\nname: review\ndescription: Review\n---\nOther"],
+                'folder' => ['SKILL.md' => "---\nname: caveman\ndescription: First\n---\nFirst"],
+            ]),
+            new InMemorySkillStorage([
+                'z-copy' => ['SKILL.md' => "---\nname: caveman\ndescription: Second\n---\nSecond"],
+            ]),
+        );
+
+        $matches = $repository->findByName($name);
+
+        $this->assertSame($locations, array_map(static fn (Skill $skill): string => $skill->location(), $matches));
+        foreach ($matches as $skill) {
+            $this->assertSame($repository->get($skill->location()), $skill);
+        }
+    }
+
+    /** @return array<string, array{string, list<string>}> */
+    public static function nameSearches(): array
+    {
+        return [
+            'missing name' => ['missing', []],
+            'single match' => ['review', ['memory://skills/a-unrelated/']],
+            'matches across storages' => ['caveman', ['memory://skills/folder/', 'memory://skills/z-copy/']],
+            'case sensitive' => ['Caveman', []],
+            'identifier is not the declared name' => ['folder', []],
+        ];
     }
 
     public function test_get_rejects_an_unknown_skill(): void
