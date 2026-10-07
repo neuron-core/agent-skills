@@ -98,12 +98,12 @@ class SkillToolkitTest extends TestCase
         $this->assertSame(['location'], $skillTool->getRequiredProperties());
         $nameProperty = $skillTool->getProperties()[0];
         $this->assertInstanceOf(ToolProperty::class, $nameProperty);
-        $this->assertSame(['file://'.$this->skillsRoot.'/writing/'], $nameProperty->getEnum());
+        $this->assertSame(['file://'.$this->skillsRoot.'/writing'], $nameProperty->getEnum());
         $this->assertCount(1, $skillTool->getProperties());
 
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
-                (new ToolCall($skillTool->getName(), 'call_1'))->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing/']),
+                (new ToolCall($skillTool->getName(), 'call_1'))->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing']),
             ]),
             new AssistantMessage('I will follow the writing skill.'),
         );
@@ -121,7 +121,7 @@ class SkillToolkitTest extends TestCase
         $this->assertStringContainsString('skill', $systemPrompt);
         $this->assertStringContainsString('read it with `skill_resource` before continuing', $systemPrompt);
         $this->assertStringContainsString('Copy the catalog location', $systemPrompt);
-        $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing/', $systemPrompt);
+        $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing', $systemPrompt);
         $this->assertStringContainsString('Skill instructions do not grant permission to use that tool.', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
@@ -139,7 +139,7 @@ class SkillToolkitTest extends TestCase
         symlink($this->skillsRoot.'/secret.md', $directory.'/secret-link.md');
         try {
             $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
-            $location = 'file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23/';
+            $location = 'file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23';
             $provider = new FakeAIProvider(
                 new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => $location])]),
                 new ToolCallMessage(null, [new ToolCall('skill_resource', 'read', [
@@ -183,9 +183,9 @@ class SkillToolkitTest extends TestCase
     {
         $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
         $provider = new FakeAIProvider(
-            new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => 'file://'.$this->skillsRoot.'/writing/'])]),
+            new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => 'file://'.$this->skillsRoot.'/writing'])]),
             new ToolCallMessage(null, [new ToolCall('skill_resource', 'read', [
-                'location' => 'file://'.$this->skillsRoot.'/writing/', 'path' => 'references/style.md',
+                'location' => 'file://'.$this->skillsRoot.'/writing', 'path' => 'references/style.md',
             ])]),
             new AssistantMessage('I read the style guide.'),
         );
@@ -223,7 +223,7 @@ class SkillToolkitTest extends TestCase
         $this->assertSame([], $repository->diagnostics());
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
-                (new ToolCall('skill', 'unicode'))->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing/']),
+                (new ToolCall('skill', 'unicode'))->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing']),
             ]),
             new AssistantMessage('Loaded.'),
         );
@@ -265,11 +265,11 @@ class SkillToolkitTest extends TestCase
         $this->assertCount(2, $skillTool->getProperties());
         $nameProperty = $skillTool->getProperties()[0];
         $this->assertInstanceOf(ToolProperty::class, $nameProperty);
-        $this->assertSame(['file://'.$this->skillsRoot.'/writing/'], $nameProperty->getEnum());
+        $this->assertSame(['file://'.$this->skillsRoot.'/writing'], $nameProperty->getEnum());
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
                 (new ToolCall($skillTool->getName(), 'call_1'))->setInputs([
-                    'location' => 'file://'.$this->skillsRoot.'/writing/',
+                    'location' => 'file://'.$this->skillsRoot.'/writing',
                     'path' => 'references/style.md',
                 ]),
             ]),
@@ -298,12 +298,12 @@ class SkillToolkitTest extends TestCase
         $storage = new class () implements SkillStorageInterface {
             public function list(): array
             {
-                return ['memory://skills/analysis/', 'memory://skills/writing/'];
+                return ['memory://skills/analysis', 'memory://skills/writing'];
             }
 
             public function read(string $location, string $path): string
             {
-                $skill = substr($location, strlen('memory://skills/'), -1);
+                $skill = substr($location, strlen('memory://skills/'));
                 if ($path === 'SKILL.md') {
                     return "---\nname: {$skill}\ndescription: {$skill} skill\n---\n{$skill} instructions.";
                 }
@@ -315,20 +315,20 @@ class SkillToolkitTest extends TestCase
         [$skillTool, $resourceTool] = $toolkit->tools();
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
-                (new ToolCall($skillTool->getName(), 'call_1'))->setInputs(['location' => 'memory://skills/analysis/']),
+                (new ToolCall($skillTool->getName(), 'call_1'))->setInputs(['location' => 'memory://skills/analysis']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($skillTool->getName(), 'call_2'))->setInputs(['location' => 'memory://skills/writing/']),
+                (new ToolCall($skillTool->getName(), 'call_2'))->setInputs(['location' => 'memory://skills/writing']),
             ]),
             new ToolCallMessage(null, [
                 (new ToolCall($resourceTool->getName(), 'call_3'))->setInputs([
-                    'location' => 'memory://skills/writing/',
+                    'location' => 'memory://skills/writing',
                     'path' => 'references/style.md',
                 ]),
             ]),
             new ToolCallMessage(null, [
                 (new ToolCall($resourceTool->getName(), 'call_4'))->setInputs([
-                    'location' => 'memory://skills/writing/',
+                    'location' => 'memory://skills/writing',
                     'path' => 'references/examples.md',
                 ]),
             ]),
@@ -357,7 +357,7 @@ class SkillToolkitTest extends TestCase
         $result = $tool->getResult();
         $this->assertInstanceOf(ToolOutput::class, $result);
         $this->assertTrue($result->isError());
-        $this->assertSame('Parameter "location" must be one of "file://'.$this->skillsRoot.'/writing/"; "unknown" given.', $result->getText());
+        $this->assertSame('Parameter "location" must be one of "file://'.$this->skillsRoot.'/writing"; "unknown" given.', $result->getText());
     }
 
     public function test_unknown_skill_resource_is_a_model_readable_result(): void
@@ -369,13 +369,13 @@ class SkillToolkitTest extends TestCase
         $result = $tool->getResult();
         $this->assertInstanceOf(ToolOutput::class, $result);
         $this->assertTrue($result->isError());
-        $this->assertSame('Parameter "location" must be one of "file://'.$this->skillsRoot.'/writing/"; "unknown" given.', $result->getText());
+        $this->assertSame('Parameter "location" must be one of "file://'.$this->skillsRoot.'/writing"; "unknown" given.', $result->getText());
     }
 
     public function test_null_byte_resource_path_is_a_model_readable_result(): void
     {
         $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[1];
-        $tool->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing/', 'path' => "resource\0.md"]);
+        $tool->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing', 'path' => "resource\0.md"]);
         $tool->execute();
 
         $this->assertSame(sprintf('Resource path "%s" is invalid.', "resource\0.md"), $tool->getResult());
@@ -384,7 +384,7 @@ class SkillToolkitTest extends TestCase
     public function test_empty_resource_path_is_invalid_and_cannot_load_instructions(): void
     {
         $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[1];
-        $tool->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing/', 'path' => '']);
+        $tool->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing', 'path' => '']);
         $tool->execute();
 
         $this->assertSame('Resource path "" is invalid.', $tool->getResult());
@@ -397,7 +397,7 @@ class SkillToolkitTest extends TestCase
         $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
         $resource = $toolkit->tools()[1];
         $resource->setInputs([
-            'location' => 'file://'.$this->skillsRoot.'/writing/',
+            'location' => 'file://'.$this->skillsRoot.'/writing',
             'path' => 'references/style.md',
         ])->execute();
 
@@ -412,7 +412,7 @@ class SkillToolkitTest extends TestCase
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
                 (new ToolCall($resourceTool->getName(), 'call_1'))->setInputs([
-                    'location' => 'file://'.$this->skillsRoot.'/writing/',
+                    'location' => 'file://'.$this->skillsRoot.'/writing',
                     'path' => 'scripts/check.php',
                 ]),
             ]),
@@ -450,8 +450,8 @@ class SkillToolkitTest extends TestCase
         }
 
         $inputs = $toolIndex === 0
-            ? ['location' => 'file://'.$this->skillsRoot.'/writing/']
-            : ['location' => 'file://'.$this->skillsRoot.'/writing/', 'path' => 'missing.md'];
+            ? ['location' => 'file://'.$this->skillsRoot.'/writing']
+            : ['location' => 'file://'.$this->skillsRoot.'/writing', 'path' => 'missing.md'];
         $tool = $toolkit->tools()[$toolIndex];
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [
@@ -468,7 +468,7 @@ class SkillToolkitTest extends TestCase
             ->getMessage();
 
         $this->assertSame('I could not read that file.', $response->getContent());
-        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, str_replace('{location}', 'file://'.$this->skillsRoot.'/writing/', $expected)));
+        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, str_replace('{location}', 'file://'.$this->skillsRoot.'/writing', $expected)));
     }
 
     /** @return array<string, array{int, bool, string}> */
@@ -489,12 +489,12 @@ class SkillToolkitTest extends TestCase
 
             public function list(): array
             {
-                return ['memory://skills/remote/'];
+                return ['memory://skills/remote'];
             }
 
             public function read(string $location, string $path): string
             {
-                $skill = substr($location, strlen('memory://skills/'), -1);
+                $skill = substr($location, strlen('memory://skills/'));
                 $this->requestedSkill = $skill;
                 $this->requestedPath = $path;
 
@@ -507,7 +507,7 @@ class SkillToolkitTest extends TestCase
         $storage->requestedSkill = null;
         $storage->requestedPath = null;
         $tool = $toolkit->tools()[1];
-        $tool->setInputs(['location' => 'memory://skills/remote/', 'path' => 'references/api.md']);
+        $tool->setInputs(['location' => 'memory://skills/remote', 'path' => 'references/api.md']);
         $tool->execute();
 
         $this->assertSame('Remote resource.', $tool->getResult());
@@ -522,7 +522,7 @@ class SkillToolkitTest extends TestCase
 
             public function list(): array
             {
-                return ['memory://skills/broken/'];
+                return ['memory://skills/broken'];
             }
 
             public function read(string $location, string $path): string
@@ -536,7 +536,7 @@ class SkillToolkitTest extends TestCase
         };
         $toolkit = new SkillToolkit(new SkillRepository($storage));
         $tool = $toolkit->tools()[0];
-        $tool->setInputs(['location' => 'memory://skills/broken/']);
+        $tool->setInputs(['location' => 'memory://skills/broken']);
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('Storage failed unexpectedly.');
@@ -551,7 +551,7 @@ class SkillToolkitTest extends TestCase
 
             public function list(): array
             {
-                return ['memory://skills/broken/'];
+                return ['memory://skills/broken'];
             }
 
             public function read(string $location, string $path): string
@@ -565,7 +565,7 @@ class SkillToolkitTest extends TestCase
         };
         $toolkit = new SkillToolkit(new SkillRepository($storage));
         $tool = $toolkit->tools()[1];
-        $tool->setInputs(['location' => 'memory://skills/broken/', 'path' => 'guide.md']);
+        $tool->setInputs(['location' => 'memory://skills/broken', 'path' => 'guide.md']);
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('Resource storage failed unexpectedly.');
@@ -584,12 +584,12 @@ class SkillToolkitTest extends TestCase
 
             public function list(): array
             {
-                return array_map(static fn (string $name): string => 'memory://skills/'.$name.'/', array_keys($this->manifests));
+                return array_map(static fn (string $name): string => 'memory://skills/'.$name, array_keys($this->manifests));
             }
 
             public function read(string $location, string $path): string
             {
-                $skill = substr($location, strlen('memory://skills/'), -1);
+                $skill = substr($location, strlen('memory://skills/'));
                 return $path === 'SKILL.md' ? $this->manifests[$skill] : $skill;
             }
         };
@@ -607,12 +607,12 @@ class SkillToolkitTest extends TestCase
         $this->assertInstanceOf(SkillResourceTool::class, $resourceTool);
         $skillKeys = [];
         foreach (['first', 'second'] as $name) {
-            $skillTool->setInputs(['location' => 'memory://skills/'.$name.'/']);
+            $skillTool->setInputs(['location' => 'memory://skills/'.$name]);
             $skillKeys[] = $skillTool->getRunKey();
         }
-        $resourceTool->setInputs(['location' => 'memory://skills/first/', 'path' => 'references/details.md']);
+        $resourceTool->setInputs(['location' => 'memory://skills/first', 'path' => 'references/details.md']);
         $firstResourceKey = $resourceTool->getRunKey();
-        $resourceTool->setInputs(['location' => 'memory://skills/first/', 'path' => 'references/examples.md']);
+        $resourceTool->setInputs(['location' => 'memory://skills/first', 'path' => 'references/examples.md']);
         $secondResourceKey = $resourceTool->getRunKey();
 
         $this->assertCount(2, array_unique($skillKeys));
@@ -653,9 +653,9 @@ class SkillToolkitTest extends TestCase
         $toolkit = new SkillToolkit($repository);
         $this->assertSame([], $repository->diagnostics());
         $activation = $toolkit->tools()[0];
-        $activation->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing/'])->execute();
+        $activation->setInputs(['location' => 'file://'.$this->skillsRoot.'/writing'])->execute();
         $this->assertSame($document, $activation->getResult());
-        $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing/', $toolkit->guidelines() ?? '');
+        $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing', $toolkit->guidelines() ?? '');
     }
 
     /** @dataProvider locationFailures */
@@ -747,9 +747,9 @@ class SkillToolkitTest extends TestCase
             $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
             $toolkit = new SkillToolkit($repository);
             $location = $repository->catalog()[0]->location();
-            $this->assertSame('file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23/', $location);
+            $this->assertSame('file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23', $location);
             // A discovered local file URI is decoded once for the host execution tool.
-            $nativePath = rtrim(rawurldecode(substr($location, 7)), '/');
+            $nativePath = rawurldecode(substr($location, 7));
             $this->assertSame($directory, $nativePath);
             $host = new BashTool();
             $provider = new FakeAIProvider(

@@ -27,15 +27,15 @@ class DatabaseSkillIdentityTest extends TestCase
         $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $toolkit = new SkillToolkit($repository);
 
-        $this->assertSame(['db://team/Caveman/', 'db://team/caveman/'], array_map(
+        $this->assertSame(['db://team/Caveman', 'db://team/caveman'], array_map(
             static fn (Skill $skill): string => $skill->location(), $repository->catalog(),
         ));
-        $this->assertStringContainsString('Uppercase source (location: db://team/Caveman/)', $toolkit->guidelines() ?? '');
-        $this->assertStringContainsString('Lowercase source (location: db://team/caveman/)', $toolkit->guidelines() ?? '');
-        $this->assertSame($upper, $repository->get('db://team/Caveman/')->readDocument());
-        $this->assertSame($lower, $repository->get('db://team/caveman/')->readDocument());
-        $this->assertSame('Uppercase path', $repository->get('db://team/caveman/')->readResource('Guide.md'));
-        $this->assertSame('Lowercase path', $repository->get('db://team/caveman/')->readResource('guide.md'));
+        $this->assertStringContainsString('Uppercase source (location: db://team/Caveman)', $toolkit->guidelines() ?? '');
+        $this->assertStringContainsString('Lowercase source (location: db://team/caveman)', $toolkit->guidelines() ?? '');
+        $this->assertSame($upper, $repository->get('db://team/Caveman')->readDocument());
+        $this->assertSame($lower, $repository->get('db://team/caveman')->readDocument());
+        $this->assertSame('Uppercase path', $repository->get('db://team/caveman')->readResource('Guide.md'));
+        $this->assertSame('Lowercase path', $repository->get('db://team/caveman')->readResource('guide.md'));
     }
 
     public function test_wrong_capitalization_cannot_select_another_identifier_or_resource(): void
@@ -49,17 +49,17 @@ class DatabaseSkillIdentityTest extends TestCase
         $this->assertSame(['caveman'], $repository->names());
         $this->assertCount(1, $repository->diagnostics());
         [, $resource] = (new SkillToolkit($repository))->tools();
-        $resource->setInputs(['location' => 'db://team/caveman/', 'path' => 'Guide.md'])->execute();
+        $resource->setInputs(['location' => 'db://team/caveman', 'path' => 'Guide.md'])->execute();
         $this->assertStringContainsString('was not found', $resource->getResult());
         try {
-            $repository->get('db://team/caveman/')->readResource('Guide.md');
+            $repository->get('db://team/caveman')->readResource('Guide.md');
             $this->fail('Capitalization must not select another resource.');
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('was not found', $exception->getMessage());
         }
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Skill "db://team/Caveman/" is not available.');
-        $repository->get('db://team/Caveman/');
+        $this->expectExceptionMessage('Skill "db://team/Caveman" is not available.');
+        $repository->get('db://team/Caveman');
     }
 
     public function test_encoded_identifiers_and_literal_percent_paths_round_trip_through_tools(): void
@@ -67,9 +67,9 @@ class DatabaseSkillIdentityTest extends TestCase
         $pdo = $this->database();
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $documents = [
-            'team caveman' => ['db://team/team%20caveman/', "---\nname: caveman\ndescription: Space\n---\nSpace document"],
-            'literal%20name' => ['db://team/literal%2520name/', "---\nname: caveman\ndescription: Percent\n---\nPercent document"],
-            'café' => ['db://team/caf%C3%A9/', "---\nname: caveman\ndescription: Unicode\n---\nUnicode document"],
+            'team caveman' => ['db://team/team%20caveman', "---\nname: caveman\ndescription: Space\n---\nSpace document"],
+            'literal%20name' => ['db://team/literal%2520name', "---\nname: caveman\ndescription: Percent\n---\nPercent document"],
+            'café' => ['db://team/caf%C3%A9', "---\nname: caveman\ndescription: Unicode\n---\nUnicode document"],
         ];
         foreach ($documents as $identifier => [$location, $document]) {
             $insert->execute([$identifier, 'SKILL.md', $document]);
@@ -89,10 +89,10 @@ class DatabaseSkillIdentityTest extends TestCase
             $this->assertSame('Literal percent resource for '.$identifier, $resource->getResult());
         }
         $this->expectException(RuntimeException::class);
-        $repository->get('db://team/literal%20name/');
+        $repository->get('db://team/literal%20name');
     }
 
-    public function test_mounts_label_the_same_rows_while_tables_isolate_content(): void
+    public function test_base_uris_label_the_same_rows_while_tables_isolate_content(): void
     {
         $pdo = $this->database();
         $document = "---\nname: writing\ndescription: Shared table\n---\nShared document";
@@ -110,15 +110,15 @@ class DatabaseSkillIdentityTest extends TestCase
         $toolkit = new SkillToolkit($repository);
         $this->assertCount(3, $repository->catalog());
         [$activation, $resource] = $toolkit->tools();
-        foreach (['db://first/writing/', 'db://second/writing/'] as $location) {
+        foreach (['db://first/writing', 'db://second/writing'] as $location) {
             $this->assertStringContainsString('Shared table (location: '.$location.')', $toolkit->guidelines() ?? '');
             $activation->setInputs(['location' => $location])->execute();
             $this->assertSame($document, $activation->getResult());
             $resource->setInputs(['location' => $location, 'path' => 'guide.md'])->execute();
             $this->assertSame('Shared guide', $resource->getResult());
         }
-        $this->assertSame($archived, $repository->get('db://archive/writing/')->readDocument());
-        $this->assertSame('Archive guide', $repository->get('db://archive/writing/')->readResource('guide.md'));
+        $this->assertSame($archived, $repository->get('db://archive/writing')->readDocument());
+        $this->assertSame('Archive guide', $repository->get('db://archive/writing')->readResource('guide.md'));
     }
 
     public function test_database_registrations_cannot_claim_the_same_public_location(): void
@@ -132,7 +132,7 @@ class DatabaseSkillIdentityTest extends TestCase
             new DatabaseSkillStorage($pdo, baseUri: 'db://team/'),
         );
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Duplicate skill location "db://team/writing/".');
+        $this->expectExceptionMessage('Duplicate skill location "db://team/writing".');
         $toolkit->guidelines();
     }
 
@@ -142,7 +142,7 @@ class DatabaseSkillIdentityTest extends TestCase
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['Caveman', 'SKILL.md', "---\nname: caveman\ndescription: Original\n---\nOriginal document"]);
         $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
-        $skill = $repository->get('db://team/Caveman/');
+        $skill = $repository->get('db://team/Caveman');
         $pdo->exec('DELETE FROM skills');
         $insert->execute(['caveman', 'SKILL.md', "---\nname: caveman\ndescription: Replacement\n---\nWrong document"]);
         $this->assertSame('Original', $skill->description());

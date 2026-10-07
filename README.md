@@ -98,14 +98,14 @@ Skills can also include scripts. To execute them, register an execution tool,
 such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
 instructions and resource locations; your application controls execution.
 Decode a local `file:///` location from the current catalog once with
-`rtrim(rawurldecode(substr($location, 7)), '/')` to obtain the native working directory
+`rawurldecode(substr($location, 7))` to obtain the native working directory
 for an execution tool. Remote
 locations do not imply that their scripts can be executed.
 
 `FileSystemSkillStorage` accepts an absolute native directory such as
 `/app/skills/`, or a local absolute file URI with an empty host such as
 `file:///app/skills/`. Relative directories, other schemes, hosts (including `localhost`),
-null bytes and backslashes are rejected. In a `file://` mount, raw `?` and `#`
+null bytes and backslashes are rejected. In a `file://` input, raw `?` and `#`
 are treated as directory characters; the emitted location encodes them.
 Percent-encode spaces, literal `%`, `#` and non-ASCII bytes in path segments:
 `/app/my skills/café%/` becomes `file:///app/my%20skills/caf%C3%A9%25/`.
@@ -113,8 +113,8 @@ The directory must already exist. The constructor resolves it with `realpath()`,
 including any symlinks in the configured root, and uses that absolute path to
 generate file URI locations. Missing directories and regular files are rejected.
 
-Mounts may omit the final slash. Dot segments and redundant separators are
-normalized; discovery emits encoded skill-root addresses ending in `/`, without
+Filesystem base paths may omit the final slash. Dot segments and redundant separators are
+normalized; discovery emits encoded skill-root addresses without a trailing slash or
 `SKILL.md`. Copy those addresses exactly: alternate URI spellings are not lookup
 aliases. Resource paths are literal: a file named `notes%20.md` is requested as
 `notes%20.md`, while `notes .md` selects the file with a space. Dot and parent
@@ -122,7 +122,7 @@ segments are normalized relative to the skill root. Paths escaping that root
 are rejected.
 
 A skill directory may be a symlink, including one pointing outside the storage
-root. Its public location stays under the configured mount, while its canonical
+root. Its public location stays under the storage's base URI, while its canonical
 native directory defines the resource boundary. Resource symlinks inside that
 boundary work; links and paths escaping it fail. Reads return the file bytes as a
 PHP string.
@@ -151,7 +151,7 @@ Listing the same exact location twice is a configuration error, including within
 one adapter or when registering the same adapter twice. Discovery throws a
 `RuntimeException` and does not publish a partial catalog for the conflicting
 adapter. Invalid or unreadable documents do not hide location conflicts.
-Overlapping mount roots are allowed when their discovered skill locations are
+Overlapping storage base URIs are allowed when their discovered skill locations are
 distinct: selection uses the exact catalog address, without prefix precedence.
 
 `FileSystemSkillStorage::list()` reads the directory when called. The repository
@@ -202,12 +202,13 @@ them in their host agent.
 Implement [`SkillStorageInterface`](src/Storage/SkillStorageInterface.php) to
 load skills from another backend. It defines two methods:
 
-- `list()` returns complete canonical skill-root locations, with a trailing slash.
+- `list()` returns complete canonical skill-root locations, without a trailing slash.
 - `read($location, $path)` reads content as a PHP string from a literal path relative to a catalog location.
 
-Configure each adapter with its complete mount point as the first constructor
-argument and backend dependencies separately. The adapter validates the mount,
-encodes its skill locations and translates each location into its backend key.
+Each adapter defines its base URI, encodes its skill locations and translates
+each location into its backend key. Configure the filesystem adapter with an
+existing absolute directory or `file://` URI. Configure the database adapter
+with a PDO connection and an optional `baseUri`.
 Names in `SKILL.md` are metadata and need not match those keys. The repository
 selects only exact discovered locations; it does not route by URI prefix.
 Throw `RuntimeException` for expected read failures, such as missing or
@@ -215,7 +216,7 @@ unreadable resources. Empty text is valid. Reads must remain confined to the
 selected skill, without falling back to another source.
 
 [`ResourceLocator`](src/ResourceLocator.php) creates canonical skill-root
-locations and validates each location and literal resource path under one mount.
+locations and validates each location and literal resource path under one base URI.
 Both storage adapters use it internally. The filesystem adapter converts its
 local directory to a `file:///` base URI.
 
@@ -243,7 +244,7 @@ $archive = new DatabaseSkillStorage($pdo, table: 'archived_skills', baseUri: 'db
 The constructor takes the application's PDO connection, an optional base URI
 (default: `db://skills/`) and an optional table name (default: `skills`). PDO query results must expose the
 lowercase column names `skill_identifier`, `path` and `content`.
-Mounts use `db://label/` with optional
+Database base URIs use `db://label/` with optional
 nested segments, for example `db://team/project/`. Labels and segments contain
 lowercase ASCII letters, digits or hyphens; a trailing slash is required.
 Credentials, ports, queries, fragments and dot segments are not accepted.
@@ -280,18 +281,18 @@ database comparison and returns the row selected by the query.
 
 `skill_identifier` is a non-empty, single-segment backend identifier; it may differ from the
 declared document name. An empty identifier causes discovery to fail with a
-`RuntimeException`. With mount `db://team/`, identifier `team caveman` is discovered at
-`db://team/team%20caveman/`. Identifier `literal%20name` becomes
-`db://team/literal%2520name/`, and `café` becomes `db://team/caf%C3%A9/`.
+`RuntimeException`. With base URI `db://team/`, identifier `team caveman` is discovered at
+`db://team/team%20caveman`. Identifier `literal%20name` becomes
+`db://team/literal%2520name`, and `café` becomes `db://team/caf%C3%A9`.
 Copy the catalog location verbatim into the tools and pass `references/guide.md`
 as a separate literal relative path. Database `path` values remain literal names:
 `references/my%20guide.md` in a call selects that exact stored key.
 Confined dot and parent segments work; absolute paths and paths escaping the
 selected skill fail.
 
-The mount labels every skill in the selected table. Two mounts over the same
+The base URI labels every skill in the selected table. Two base URIs over the same
 connection and table expose the same rows under different locations. Use separate
-tables or databases for data isolation; the mount does not filter tenants. A
+tables or databases for data isolation; the base URI does not filter tenants. A
 filesystem skill with the same declared name remains independently selectable,
 and a missing database resource never falls back to that filesystem skill.
 For example, register both adapters on the same toolkit:

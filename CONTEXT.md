@@ -46,7 +46,7 @@ _Avoid_: Scheme alone when referring to a storage's base URI.
 
 **Skill location**:
 The complete canonical URI identifying a skill root within a storage, such as
-`file:///app/skills/caveman/`, with a trailing slash and no document or resource
+`file:///app/skills/caveman`, without a trailing slash or document or resource
 path. It selects the skill independently of its declared name.
 
 **Resource path**:
