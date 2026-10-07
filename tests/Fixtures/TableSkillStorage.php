@@ -37,6 +37,16 @@ class TableSkillStorage implements SkillStorageInterface
         return array_keys($this->resources);
     }
 
+    public function resources(string $location): array
+    {
+        $this->resourceLocator->resolve($location, 'SKILL.md');
+        $paths = array_keys($this->resources[$location]
+            ?? throw new RuntimeException(sprintf('Skill "%s" is not available.', $location)));
+        sort($paths, SORT_STRING);
+
+        return $paths;
+    }
+
     public function read(string $location, string $path): string
     {
         $resource = $this->resourceLocator->resolve($location, $path);

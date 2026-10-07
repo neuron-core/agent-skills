@@ -45,6 +45,66 @@ class FileSystemSkillStorageTest extends TestCase
         $this->removeDirectory($this->outsideRoot);
     }
 
+    public function test_resources_include_nested_files_and_literal_paths(): void
+    {
+        mkdir($this->skillsRoot.'/writing/references', 0o777, true);
+        file_put_contents($this->skillsRoot.'/writing/SKILL.md', 'Document');
+        file_put_contents($this->skillsRoot.'/writing/references/città %20.md', 'Guide');
+        mkdir($this->skillsRoot.'/writing/empty');
+        $storage = new FileSystemSkillStorage($this->skillsRoot);
+
+        $this->assertSame(['SKILL.md', 'references/città %20.md'], $storage->resources('file://'.$this->skillsRoot.'/writing'));
+    }
+
+    public function test_resources_follow_confined_links_without_recursing_through_cycles(): void
+    {
+        mkdir($this->skillsRoot.'/writing/references', 0o777, true);
+        file_put_contents($this->skillsRoot.'/writing/SKILL.md', 'Document');
+        file_put_contents($this->skillsRoot.'/writing/references/guide.md', 'Guide');
+        symlink('references/guide.md', $this->skillsRoot.'/writing/guide-link.md');
+        symlink('references', $this->skillsRoot.'/writing/docs');
+        symlink('..', $this->skillsRoot.'/writing/references/loop');
+        symlink('.', $this->skillsRoot.'/writing/self');
+        $storage = new FileSystemSkillStorage($this->skillsRoot);
+
+        $this->assertSame(['SKILL.md', 'docs/guide.md', 'guide-link.md', 'references/guide.md'], $storage->resources('file://'.$this->skillsRoot.'/writing'));
+    }
+
+    public function test_resources_preserve_symlinked_skill_roots(): void
+    {
+        mkdir($this->outsideRoot.'/shared/references', 0o777, true);
+        file_put_contents($this->outsideRoot.'/shared/SKILL.md', 'Document');
+        file_put_contents($this->outsideRoot.'/shared/references/guide.md', 'Guide');
+        symlink($this->outsideRoot.'/shared', $this->skillsRoot.'/writing');
+
+        $this->assertSame(['SKILL.md', 'references/guide.md'], (new FileSystemSkillStorage($this->skillsRoot))->resources('file://'.$this->skillsRoot.'/writing'));
+    }
+
+    /** @dataProvider escapingResourceLinks */
+    public function test_resources_reject_links_outside_the_skill(bool $directory): void
+    {
+        mkdir($this->skillsRoot.'/writing');
+        file_put_contents($this->outsideRoot.'/secret.md', 'Secret');
+        symlink($directory ? $this->outsideRoot : $this->outsideRoot.'/secret.md', $this->skillsRoot.'/writing/escape');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('escapes skill');
+        (new FileSystemSkillStorage($this->skillsRoot))->resources('file://'.$this->skillsRoot.'/writing');
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function escapingResourceLinks(): array
+    {
+        return ['file link' => [false], 'directory link' => [true]];
+    }
+
+    public function test_resources_reject_unknown_skills(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('is not available');
+        (new FileSystemSkillStorage($this->skillsRoot))->resources('file://'.$this->skillsRoot.'/missing');
+    }
+
     public function test_enumerates_only_direct_child_packages_in_deterministic_order(): void
     {
         file_put_contents($this->skillsRoot.'/README.md', 'Not a package.');

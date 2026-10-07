@@ -55,6 +55,37 @@ class DatabaseSkillStorage implements SkillStorageInterface
         return array_keys($locations);
     }
 
+    public function resources(string $location): array
+    {
+        $resource = $this->resourceLocator->resolve($location, 'SKILL.md');
+
+        try {
+            /** @var PDOStatement $statement */
+            $statement = $this->pdo->prepare('SELECT path FROM '.$this->table.' WHERE skill_identifier = ?');
+            $statement->execute([$resource->skillIdentifier]);
+            $paths = $statement->fetchAll(PDO::FETCH_COLUMN);
+        } catch (PDOException $exception) {
+            throw new RuntimeException(
+                sprintf('Database skill table "%s" could not be read.', $this->table),
+                previous: $exception
+            );
+        }
+
+        if ($paths === []) {
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
+        }
+
+        foreach ($paths as $path) {
+            if ($this->resourceLocator->resolve($location, $path)->path !== $path) {
+                throw new RuntimeException(sprintf('Resource path "%s" is invalid.', $path));
+            }
+        }
+
+        sort($paths, SORT_STRING);
+
+        return $paths;
+    }
+
     public function read(string $location, string $path): string
     {
         $resource = $this->resourceLocator->resolve($location, $path);

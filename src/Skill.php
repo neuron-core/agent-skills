@@ -59,6 +59,15 @@ final class Skill
     }
 
     /**
+     * @return list<string>
+     * @throws RuntimeException
+     */
+    public function resources(): array
+    {
+        return $this->storage->resources($this->location);
+    }
+
+    /**
      * Read a resource by its literal path relative to this skill, such as references/my guide.md.
      *
      * @throws RuntimeException

@@ -16,6 +16,14 @@ interface SkillStorageInterface
     public function list(): array;
 
     /**
+     * Return all literal relative file paths belonging to the selected skill, including SKILL.md.
+     *
+     * @return list<string>
+     * @throws RuntimeException
+     */
+    public function resources(string $location): array;
+
+    /**
      * Read file contents as a PHP string using a canonical skill location and a literal relative path.
      * Throw RuntimeException for expected failures such as an unknown resource or unreadable file.
      *

@@ -92,7 +92,7 @@ class SkillToolkitTest extends TestCase
         $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
         $toolkit = new SkillToolkit($repository);
         $tools = $toolkit->tools();
-        $this->assertCount(2, $tools);
+        $this->assertCount(3, $tools);
         $skillTool = $tools[0];
         $this->assertInstanceOf(SkillTool::class, $skillTool);
         $this->assertSame(['name'], $skillTool->getRequiredProperties());
@@ -115,13 +115,12 @@ class SkillToolkitTest extends TestCase
         $response = $agent->chat(new UserMessage('Help me write.'))->getMessage();
 
         $this->assertSame('I will follow the writing skill.', $response->getContent());
-        $provider->assertToolsConfigured(['skill', 'skill_resources']);
+        $provider->assertToolsConfigured(['skill', 'skill_resources', 'skill_script_prepare']);
         $systemPrompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
         $this->assertStringContainsString('Read required instructions and references with `skill_resources`, using the declared skill name', $systemPrompt);
         $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing', $systemPrompt);
-        $this->assertStringContainsString('Skill instructions do not grant permission to use that tool.', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult(
@@ -160,8 +159,9 @@ class SkillToolkitTest extends TestCase
 
             $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
             $this->assertStringContainsString('writing: Write clear prose (location: '.$location.')', $prompt);
-            $this->assertStringContainsString('decode its path once to a native working directory', $prompt);
-            $this->assertStringContainsString('Remote locations do not imply executability.', $prompt);
+            $this->assertStringContainsString('For scripts, call `skill_script_prepare` with the declared skill name.', $prompt);
+            $this->assertStringContainsString('After successful preparation, use the returned directory.', $prompt);
+            $this->assertStringContainsString('Run the command specified by the skill from that directory with a separate execution tool.', $prompt);
             foreach ([
                 file_get_contents($directory.'/SKILL.md'),
                 $this->resourceResult('references/style.md', "# Style guide\n\nUse concrete words.\n"),
@@ -281,7 +281,7 @@ class SkillToolkitTest extends TestCase
 
         $agent->chat(new UserMessage('Read the style guide.'))->getMessage();
 
-        $provider->assertToolsConfigured(['skill', 'skill_resources']);
+        $provider->assertToolsConfigured(['skill', 'skill_resources', 'skill_script_prepare']);
         $this->assertStringNotContainsString(
             'Use concrete words.',
             $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '',
@@ -298,6 +298,11 @@ class SkillToolkitTest extends TestCase
             public function list(): array
             {
                 return ['memory://skills/analysis', 'memory://skills/writing'];
+            }
+
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
             }
 
             public function read(string $location, string $path): string
@@ -491,6 +496,11 @@ class SkillToolkitTest extends TestCase
                 return ['memory://skills/remote'];
             }
 
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
+            }
+
             public function read(string $location, string $path): string
             {
                 $skill = substr($location, strlen('memory://skills/'));
@@ -524,6 +534,11 @@ class SkillToolkitTest extends TestCase
                 return ['memory://skills/broken'];
             }
 
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
+            }
+
             public function read(string $location, string $path): string
             {
                 if ($this->reads++ === 0) {
@@ -551,6 +566,11 @@ class SkillToolkitTest extends TestCase
             public function list(): array
             {
                 return ['memory://skills/broken'];
+            }
+
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
             }
 
             public function read(string $location, string $path): string
@@ -584,6 +604,11 @@ class SkillToolkitTest extends TestCase
             public function list(): array
             {
                 return array_map(static fn (string $name): string => 'memory://skills/'.$name, array_keys($this->manifests));
+            }
+
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
             }
 
             public function read(string $location, string $path): string
@@ -673,6 +698,11 @@ class SkillToolkitTest extends TestCase
                 throw new LogicException('Location adapter failed.');
             }
 
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
+            }
+
             public function read(string $location, string $path): string
             {
                 return "---\nname: writing\ndescription: Writing\n---\nBody";
@@ -704,6 +734,11 @@ class SkillToolkitTest extends TestCase
             public function list(): array
             {
                 return ['skills://workspace/source-id/'];
+            }
+
+            public function resources(string $location): array
+            {
+                return ['SKILL.md'];
             }
 
             public function read(string $location, string $path): string
