@@ -9,6 +9,7 @@ use Throwable;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 
 use function array_key_exists;
+use function array_filter;
 use function array_map;
 use function array_values;
 use function sort;
@@ -74,6 +75,15 @@ class SkillRepository
         }
 
         return $catalog[$location];
+    }
+
+    /** @return list<Skill> */
+    public function findByName(string $name): array
+    {
+        return array_values(array_filter(
+            $this->catalog(),
+            static fn (Skill $skill): bool => $skill->name() === $name,
+        ));
     }
 
     /** @return array<string, Skill> */

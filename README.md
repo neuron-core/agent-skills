@@ -164,6 +164,9 @@ Share one `SkillRepository` between the toolkit and other application features,
 for example slash commands and explicit skill invocation. `catalog()` returns a
 list of `Skill` objects; `get($location)` returns the selected skill or throws a
 `RuntimeException` when that exact location is unavailable.
+`findByName($name)` returns all catalog skills with that exact declared name as a
+list of `Skill` objects, or `[]` when none match. The search is case sensitive;
+skills with the same name remain separate results.
 
 ```php
 use NeuronAI\AgentSkills\SkillRepository;
@@ -178,6 +181,8 @@ $agent->addTool(new SkillToolkit($skills));
 foreach ($skills->catalog() as $skill) {
     echo $skill->name().': '.$skill->description().' ('.$skill->location().')';
 }
+
+$matches = $skills->findByName('caveman');
 
 $skill = $skills->catalog()[0];
 $frontmatter = $skill->readFrontmatter();   // Parsed YAML metadata as stdClass.
