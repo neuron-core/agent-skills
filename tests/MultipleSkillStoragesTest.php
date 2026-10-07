@@ -76,7 +76,7 @@ class MultipleSkillStoragesTest extends TestCase
     }
 
     /** @dataProvider storageOrders */
-    public function test_loading_selects_the_first_source_while_location_based_resources_remain_available(bool $databaseFirst): void
+    public function test_loading_and_resource_reads_select_the_first_source(bool $databaseFirst): void
     {
         $localDocument = $this->skill('project', 'caveman', 'caveman', 'Local caveman');
         file_put_contents($this->root.'/project/caveman/local-only.md', 'Local content must not leak.');
@@ -88,6 +88,7 @@ class MultipleSkillStoragesTest extends TestCase
         $insert = $pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['team caveman', 'SKILL.md', $databaseDocument]);
         $insert->execute(['team caveman', 'references/guide.md', 'Database guide.']);
+        $insert->execute(['team caveman', 'database-only.md', 'Database content must not leak.']);
         $localStorage = new FileSystemSkillStorage('file://'.$this->root.'/project/');
         $databaseStorage = new DatabaseSkillStorage($pdo, baseUri: 'db://team/');
         $repository = $databaseFirst
@@ -107,9 +108,8 @@ class MultipleSkillStoragesTest extends TestCase
                 (new ToolCall($skill->getName(), 'selected'))->setInputs(['name' => 'caveman']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($resource->getName(), 'local-guide'))->setInputs(['location' => $localLocation, 'path' => 'references/guide.md']),
-                (new ToolCall($resource->getName(), 'database-guide'))->setInputs(['location' => $databaseLocation, 'path' => 'references/guide.md']),
-                (new ToolCall($resource->getName(), 'missing-guide'))->setInputs(['location' => $databaseLocation, 'path' => 'local-only.md']),
+                (new ToolCall($resource->getName(), 'selected-guide'))->setInputs(['name' => 'caveman', 'paths' => ['references/guide.md']]),
+                (new ToolCall($resource->getName(), 'missing-guide'))->setInputs(['name' => 'caveman', 'paths' => [$databaseFirst ? 'local-only.md' : 'database-only.md']]),
             ]),
             new AssistantMessage('Both sources checked.'),
         );
@@ -120,16 +120,15 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertStringContainsString('caveman: Database caveman (location: '.$databaseLocation.')', $prompt);
         $expectedResults = [
             'selected' => $databaseFirst ? $databaseDocument : $localDocument,
-            'local-guide' => 'Local guide.',
-            'database-guide' => 'Database guide.',
-            'missing-guide' => 'Resource "local-only.md" was not found in skill "'.$databaseLocation.'".',
+            'selected-guide' => json_encode(['resources' => [['path' => 'references/guide.md', 'content' => $databaseFirst ? 'Database guide.' : 'Local guide.']]], JSON_THROW_ON_ERROR),
+            'missing-guide' => 'Resource "'.($databaseFirst ? 'local-only.md' : 'database-only.md').'" was not found in skill "'.($databaseFirst ? $databaseLocation : $localLocation).'".',
         ];
         foreach ($expectedResults as $id => $expected) {
             $provider->assertSent(static function (RequestRecord $request) use ($id, $expected): bool {
                 foreach ($request->messages as $message) {
                     if ($message instanceof ToolResultMessage) {
                         foreach ($message->getToolCalls() as $tool) {
-                            if ($tool->getCallId() === $id && str_contains($tool->getResult(), $expected)) {
+                            if ($tool->getCallId() === $id && str_contains((string) $tool->getResult(), $expected)) {
                                 return true;
                             }
                         }
@@ -148,7 +147,7 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertStringContainsString('was not found', $skill->getResult());
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage($expectedResults['missing-guide']);
+        $this->expectExceptionMessage('Resource "local-only.md" was not found in skill "'.$databaseLocation.'".');
         $repository->get($databaseLocation)->readResource('local-only.md');
     }
 
@@ -206,8 +205,8 @@ class MultipleSkillStoragesTest extends TestCase
             [$activation, $resource] = $toolkit->tools();
             $activation->setInputs(['name' => '123'])->execute();
             $this->assertSame($projectDocument, $activation->getResult());
-            $resource->setInputs(['location' => 'file://'.$this->root.'/project/123', 'path' => 'guide.md'])->execute();
-            $this->assertSame("project guide for '123'", $resource->getResult());
+            $resource->setInputs(['name' => '123', 'paths' => ['guide.md']])->execute();
+            $this->assertSame(['resources' => [['path' => 'guide.md', 'content' => "project guide for '123'"]]], json_decode($resource->getResult(), true, flags: JSON_THROW_ON_ERROR));
         }
     }
 
@@ -306,8 +305,8 @@ class MultipleSkillStoragesTest extends TestCase
         [$activation, $resource] = $toolkit->tools();
         $activation->setInputs(['name' => 'shared'])->execute();
         $this->assertStringContainsString('description: First', $activation->getResult());
-        $resource->setInputs(['location' => 'memory://primary/a-first', 'path' => 'guide.md'])->execute();
-        $this->assertSame('a-first/guide.md', $resource->getResult());
+        $resource->setInputs(['name' => 'shared', 'paths' => ['guide.md']])->execute();
+        $this->assertSame(['resources' => [['path' => 'guide.md', 'content' => 'a-first/guide.md']]], json_decode($resource->getResult(), true, flags: JSON_THROW_ON_ERROR));
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $primary->documents['a-first'] = "---\nname: shared\ndescription: Changed\n---\nNew body";
         $activation->execute();
@@ -341,8 +340,8 @@ class MultipleSkillStoragesTest extends TestCase
                 (new ToolCall($skill->getName(), 'analysis'))->setInputs(['name' => 'analysis']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['location' => 'file://'.$this->root.'/project/same-folder', 'path' => 'guide.md']),
-                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['location' => 'file://'.$this->root.'/user/same-folder', 'path' => 'guide.md']),
+                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['name' => 'writing', 'paths' => ['guide.md']]),
+                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['name' => 'analysis', 'paths' => ['guide.md']]),
             ]),
             new AssistantMessage('Both skills loaded.'),
         );
@@ -356,7 +355,7 @@ class MultipleSkillStoragesTest extends TestCase
                 foreach ($request->messages as $message) {
                     if ($message instanceof ToolResultMessage) {
                         foreach ($message->getToolCalls() as $tool) {
-                            if (str_contains($tool->getResult(), $expected)) {
+                            if (str_contains((string) $tool->getResult(), $expected)) {
                                 return true;
                             }
                         }

@@ -78,14 +78,17 @@ echo $response->getMessage()->getContent();
 
 The agent initially sees each skill's name, description and location. When a
 skill is relevant to the task, it uses `skill` to load its instructions. If those
-instructions reference supporting files, it can read them with `skill_resource`.
+instructions reference supporting files, it can read them with `skill_resources`.
 Pass the declared skill name in `name` to `skill`. When names repeat, the first
 configured storage with a valid document wins; discovery order within that
-storage breaks ties. Copy the catalog location verbatim into `skill_resource`. Pass resource paths
-separately as literal paths relative to the skill root, even when found in a
+storage breaks ties. Pass the same declared name in `name` to `skill_resources`,
+with a non-empty `paths` list of literal paths relative to the skill root, even when found in a
 supporting document. For example, `references/my guide.md` selects that file;
 `references/my%20guide.md` selects a file whose name contains `%20`.
-Do not compose full resource URIs.
+Do not compose full resource URIs. A successful resource result contains
+`resources`, a list of `{path, content}` entries. If any path is unavailable or
+invalid, the whole request returns an error identifying that path, without a
+partial collection or fallback to another same-name skill.
 This keeps the initial context small while making the full skill available when
 needed.
 
@@ -94,7 +97,7 @@ The toolkit registers two tools:
 | Tool | Purpose |
 | --- | --- |
 | `skill` | Load the complete `SKILL.md` by its declared `name`. |
-| `skill_resource` | Read `path` relative to the skill root selected by `location`. |
+| `skill_resources` | Read a non-empty list of `paths` from the skill selected by declared `name`. Return each path with its content. |
 
 Skills can also include scripts. To execute them, register an execution tool,
 such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
@@ -354,7 +357,7 @@ CI covers PHP 8.1–8.5, multiple Neuron AI versions and Symfony YAML compatibil
 
 ## Resource path migration
 
-`Skill::readResource()` and `skill_resource` accept literal paths. Pass
+`Skill::readResource()` and `skill_resources` accept literal paths. Pass
 `my guide.md` for a filename with a space, or `notes%20.md` for a filename
 containing those exact characters.
 If a caller previously passed URI-encoded resource paths, it must now pass the

@@ -41,12 +41,10 @@ class SkillToolkit extends AbstractToolkit
             ."\nPass the declared name in `name` to `skill`. For duplicate names, the first configured storage wins."
             ."\nUse a skill when the user requests it or it is relevant to the task."
             .' Load its SKILL.md with `skill` before following it.'
-            .' If the instructions require a supporting text file, read it with `skill_resource` before continuing.'
-            .' Copy the catalog location into the location argument of `skill_resource`.'
-            .' Pass supporting resource paths separately in path, always relative to the skill root, including references found in supporting documents.'
+            .' Read required instructions and references with `skill_resources`, using the declared skill name and a non-empty list of literal paths relative to the skill root, including references found in supporting documents.'
             .' Pass the literal path as written: references/my guide.md names that file, and percent signs remain literal.'
             .' Do not compose full resource URIs.'
-            .' `skill` and `skill_resource` only read text.'
+            .' `skill` and `skill_resources` only read text.'
             .' When a skill requires a script, use an available execution tool only if the skill is accessible to it.'
             .' For a local file URI, validate its structure and decode its path once to a native working directory; never pass the URI as a working directory.'
             .' Remote locations do not imply executability.'
@@ -76,7 +74,7 @@ class SkillToolkit extends AbstractToolkit
 
         return [
             new SkillTool($this->repository),
-            new SkillResourceTool($this->repository),
+            new SkillResourcesTool($this->repository),
         ];
     }
 }

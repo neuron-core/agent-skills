@@ -49,8 +49,8 @@ class DatabaseSkillIdentityTest extends TestCase
         $this->assertSame(['caveman'], $repository->names());
         $this->assertCount(1, $repository->diagnostics());
         [, $resource] = (new SkillToolkit($repository))->tools();
-        $resource->setInputs(['location' => 'db://team/caveman', 'path' => 'Guide.md'])->execute();
-        $this->assertStringContainsString('was not found', $resource->getResult());
+        $resource->setInputs(['name' => 'caveman', 'paths' => ['Guide.md']])->execute();
+        $this->assertStringContainsString('was not found', (string) $resource->getResult());
         try {
             $repository->get('db://team/caveman')->readResource('Guide.md');
             $this->fail('Capitalization must not select another resource.');
@@ -85,8 +85,9 @@ class DatabaseSkillIdentityTest extends TestCase
             $this->assertStringContainsString('location: '.$location.')', $toolkit->guidelines() ?? '');
             $activation->setInputs(['name' => 'caveman'])->execute();
             $this->assertSame($documents['café'][1], $activation->getResult());
-            $resource->setInputs(['location' => $location, 'path' => 'notes%20.md'])->execute();
-            $this->assertSame('Literal percent resource for '.$identifier, $resource->getResult());
+            $resource->setInputs(['name' => 'caveman', 'paths' => ['notes%20.md']])->execute();
+            $this->assertSame('Literal percent resource for '.$identifier, $repository->get($location)->readResource('notes%20.md'));
+            $this->assertSame(['resources' => [['path' => 'notes%20.md', 'content' => 'Literal percent resource for café']]], json_decode($resource->getResult(), true, flags: JSON_THROW_ON_ERROR));
         }
         $this->expectException(RuntimeException::class);
         $repository->get('db://team/literal%20name');
@@ -114,8 +115,8 @@ class DatabaseSkillIdentityTest extends TestCase
             $this->assertStringContainsString('Shared table (location: '.$location.')', $toolkit->guidelines() ?? '');
             $activation->setInputs(['name' => 'writing'])->execute();
             $this->assertSame($document, $activation->getResult());
-            $resource->setInputs(['location' => $location, 'path' => 'guide.md'])->execute();
-            $this->assertSame('Shared guide', $resource->getResult());
+            $resource->setInputs(['name' => 'writing', 'paths' => ['guide.md']])->execute();
+            $this->assertSame(['resources' => [['path' => 'guide.md', 'content' => 'Shared guide']]], json_decode($resource->getResult(), true, flags: JSON_THROW_ON_ERROR));
         }
         $this->assertSame($archived, $repository->get('db://archive/writing')->readDocument());
         $this->assertSame('Archive guide', $repository->get('db://archive/writing')->readResource('guide.md'));
