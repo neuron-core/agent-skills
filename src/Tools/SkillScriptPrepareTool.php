@@ -16,7 +16,8 @@ class SkillScriptPrepareTool extends Tool
 {
     protected string $name = 'skill_script_prepare';
 
-    protected ?string $description = 'Prepare every resource of a skill for script execution. Returns the original local directory or a complete temporary copy. Use a separate execution tool from the returned directory.';
+    protected ?string $description = 'Prepare all files of a skill before executing its scripts. '
+        .'Returns directory and relative files for a separate execution tool.';
 
     public function __construct(private SkillRepository $repository)
     {

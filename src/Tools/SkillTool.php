@@ -17,7 +17,10 @@ class SkillTool extends Tool
 
     protected string $name = 'skill';
 
-    protected ?string $description = 'Load a skill\'s complete task instructions. Execute the instructions returned by this call before answering. If the document instructs you to call another skill by name, call this tool again with that other name before replying or asking questions.';
+    protected ?string $description = 'Load a skill\'s complete task instructions. '
+        .'Execute the instructions returned by this call before answering. '
+        .'If the document instructs you to call another skill by name, '
+        .'call this tool again with that other name before replying or asking questions.';
 
     public function __construct(protected SkillRepository $repository)
     {

@@ -119,9 +119,9 @@ class SkillToolkitTest extends TestCase
         $systemPrompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
-        $this->assertStringContainsString('"Call the Skill tool with X"', $systemPrompt);
+        $this->assertStringContainsString('"Call the Skill tool with X" means your next action is `skill(name=X)`.', $systemPrompt);
         $this->assertStringContainsString('before replying or asking questions', $skillTool->getDescription() ?? '');
-        $this->assertStringContainsString('Read required instructions and references with `skill_resource`, using the declared skill name', $systemPrompt);
+        $this->assertStringContainsString('Read required files with `skill_resource`', $systemPrompt);
         $this->assertStringNotContainsString('file://', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
@@ -162,9 +162,8 @@ class SkillToolkitTest extends TestCase
             $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
             $this->assertStringContainsString('writing: Write clear prose', $prompt);
             $this->assertStringNotContainsString('location:', $prompt);
-            $this->assertStringContainsString('For scripts, call `skill_script_prepare` with the declared skill name.', $prompt);
-            $this->assertStringContainsString('After successful preparation, use the returned directory.', $prompt);
-            $this->assertStringContainsString('Run the command specified by the skill from that directory with a separate execution tool.', $prompt);
+            $this->assertStringContainsString('Prepare scripts with `skill_script_prepare`', $prompt);
+            $this->assertStringContainsString('directory with an execution tool.', $prompt);
             foreach ([
                 file_get_contents($directory.'/SKILL.md'),
                 "# Style guide\n\nUse concrete words.\n",
