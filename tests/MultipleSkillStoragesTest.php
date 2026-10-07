@@ -116,8 +116,10 @@ class MultipleSkillStoragesTest extends TestCase
         $agent = Agent::make()->setThreadId('same-name')->setAiProvider($provider)->addTool($toolkit);
         $this->assertSame('Both sources checked.', $agent->chat(new UserMessage('Compare the caveman sources.'))->getMessage()->getContent());
         $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
-        $this->assertStringContainsString('caveman: Local caveman (location: '.$localLocation.')', $prompt);
-        $this->assertStringContainsString('caveman: Database caveman (location: '.$databaseLocation.')', $prompt);
+        $this->assertStringContainsString($databaseFirst ? 'caveman: Database caveman' : 'caveman: Local caveman', $prompt);
+        $this->assertStringNotContainsString($databaseFirst ? 'Local caveman' : 'Database caveman', $prompt);
+        $this->assertSame(1, substr_count($prompt, '- caveman:'));
+        $this->assertStringNotContainsString('location:', $prompt);
         $expectedResults = [
             'selected' => $databaseFirst ? $databaseDocument : $localDocument,
             'selected-guide' => json_encode(['resources' => [['path' => 'references/guide.md', 'content' => $databaseFirst ? 'Database guide.' : 'Local guide.']]], JSON_THROW_ON_ERROR),
@@ -171,7 +173,7 @@ class MultipleSkillStoragesTest extends TestCase
         );
         [$activation] = $toolkit->tools();
         foreach (['db://team/nested' => $outer, 'db://team/nested/child' => $inner] as $location => $document) {
-            $this->assertStringContainsString('location: '.$location, $toolkit->guidelines() ?? '');
+            $this->assertStringNotContainsString($location, $toolkit->guidelines() ?? '');
             $activation->setInputs(['name' => 'shared'])->execute();
             $this->assertSame($outer, $activation->getResult());
         }
@@ -201,7 +203,7 @@ class MultipleSkillStoragesTest extends TestCase
             SkillToolkit::make()->fromStorage($project),
             SkillToolkit::make()->fromStorage($project, $user),
         ] as $toolkit) {
-            $this->assertStringContainsString('Project (location: file://'.$this->root.'/project/123)', $toolkit->guidelines() ?? '');
+            $this->assertStringContainsString('Project', $toolkit->guidelines() ?? '');
             [$activation, $resource] = $toolkit->tools();
             $activation->setInputs(['name' => '123'])->execute();
             $this->assertSame($projectDocument, $activation->getResult());
@@ -299,7 +301,7 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $guidelines = $toolkit->guidelines() ?? '';
         $this->assertStringContainsString('shared: First', $guidelines);
-        $this->assertStringContainsString('location: memory://primary/a-first', $guidelines);
+        $this->assertStringNotContainsString('memory://', $guidelines);
         $this->assertStringContainsString('invalid: Recovered', $guidelines);
         $this->assertStringContainsString('unreadable: Recovered', $guidelines);
         [$activation, $resource] = $toolkit->tools();
@@ -348,8 +350,8 @@ class MultipleSkillStoragesTest extends TestCase
         $agent = Agent::make()->setThreadId('skills-test')->setAiProvider($provider)->addTool($toolkit);
         $this->assertSame('Both skills loaded.', $agent->chat(new UserMessage('Analyse and write.'))->getMessage()->getContent());
         $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
-        $this->assertStringContainsString($this->root.'/project/same-folder', $prompt);
-        $this->assertStringContainsString($this->root.'/user/same-folder', $prompt);
+        $this->assertStringContainsString('writing: Write prose', $prompt);
+        $this->assertStringContainsString('analysis: Analyse evidence', $prompt);
         foreach ([$projectDocument, $userDocument, 'project guide for writing', 'user guide for analysis'] as $expected) {
             $provider->assertSent(static function (RequestRecord $request) use ($expected): bool {
                 foreach ($request->messages as $message) {

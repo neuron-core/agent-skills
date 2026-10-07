@@ -57,12 +57,16 @@ class SkillToolkit extends AbstractToolkit
     /** @param list<Skill> $catalog */
     private function formatCatalog(array $catalog): string
     {
+        $selected = [];
+        foreach ($catalog as $skill) {
+            $selected[$skill->name()] ??= $skill;
+        }
+
         $entries = array_map(static function (Skill $skill): string {
             $description = preg_replace('/\s+/u', ' ', $skill->description()) ?? $skill->description();
-            $location = $skill->location();
 
-            return '- '.$skill->name().': '.trim($description).' (location: '.$location.')';
-        }, $catalog);
+            return '- '.$skill->name().': '.trim($description);
+        }, $selected);
 
         return implode("\n", $entries);
     }

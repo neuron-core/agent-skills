@@ -76,8 +76,9 @@ echo $response->getMessage()->getContent();
 
 ## How Skills Work
 
-The agent initially sees each skill's name, description and location. When a
-skill is relevant to the task, it uses `skill` to load its instructions. If those
+The agent initially sees one selected entry per declared name, containing only
+the name and description. When a skill is relevant to the task, it uses `skill`
+to load its instructions. If those
 instructions reference supporting files, it can read them with `skill_resources`.
 Pass the declared skill name in `name` to `skill`. When names repeat, the first
 configured storage with a valid document wins; discovery order within that
@@ -92,20 +93,37 @@ partial collection or fallback to another same-name skill.
 This keeps the initial context small while making the full skill available when
 needed.
 
-The toolkit registers two tools:
+The toolkit registers exactly three tools for any usable catalog, whether
+filesystem-only, database-only or mixed. An empty usable catalog registers none:
 
 | Tool | Purpose |
 | --- | --- |
 | `skill` | Load the complete `SKILL.md` by its declared `name`. |
 | `skill_resources` | Read a non-empty list of `paths` from the skill selected by declared `name`. Return each path with its content. |
+| `skill_script_prepare` | Prepare every resource of the skill selected by `name`; return `directory` and relative `files`. |
 
-Skills can also include scripts. To execute them, register an execution tool,
-such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
-instructions and resource locations; your application controls execution.
-Decode a local `file:///` location from the current catalog once with
-`rawurldecode(substr($location, 7))` to obtain the native working directory
-for an execution tool. Remote
-locations do not imply that their scripts can be executed.
+Skills can also include scripts. Register a separate execution tool, such as
+Neuron's `BashTool`, alongside the toolkit. For every storage source, the agent
+loads the complete document with `skill(name)`, reads necessary references with
+`skill_resources(name, paths)` and calls `skill_script_prepare(name)` before
+executing scripts from the returned directory. It does not interpret skill URIs
+or choose a preparation procedure by storage type. Ordinary document loading
+and reference reading do not prepare files.
+
+Preparation returns the original native directory for filesystem skills. For
+other sources it copies every enumerated resource, including `SKILL.md`, scripts,
+configuration, references and binary assets, into a fresh temporary directory.
+Relative paths and exact bytes are preserved. A read or write failure returns an
+error, never a successful incomplete directory. Preparation does not execute
+code, install packages or grant execution permissions. Each skill specifies
+its input and output requirements; the separate execution tool must be able to
+access the returned directory in the application process's filesystem.
+
+Temporary directories are created under `sys_get_temp_dir()` and remain after
+execution. Their cleanup belongs to the application or environment, including
+partial files left after failed preparation. The toolkit provides no cleanup
+method, shutdown callbacks, session lifecycle or caching of prepared copies.
+Original skill files are preserved.
 
 `FileSystemSkillStorage` accepts an absolute native directory such as
 `/app/skills/`, or a local absolute file URI with an empty host such as
@@ -120,8 +138,8 @@ generate file URI locations. Missing directories and regular files are rejected.
 
 Filesystem base paths may omit the final slash. Dot segments and redundant separators are
 normalized; discovery emits encoded skill-root addresses without a trailing slash or
-`SKILL.md`. Copy those addresses exactly: alternate URI spellings are not lookup
-aliases. Resource paths are literal: a file named `notes%20.md` is requested as
+`SKILL.md`. For direct repository access, use those addresses exactly: alternate URI
+spellings are not lookup aliases. Resource paths are literal: a file named `notes%20.md` is requested as
 `notes%20.md`, while `notes .md` selects the file with a space. Dot and parent
 segments are normalized relative to the skill root. Paths escaping that root
 are rejected.
@@ -146,11 +164,13 @@ $toolkit = SkillToolkit::make()
     );
 ```
 
-Skills with the same declared name remain available at distinct locations.
-Names are descriptive metadata, not unique selection keys. Each discovered
-location belongs to the adapter that listed it; instructions and resources stay
-with that source. A missing resource fails even if another same-name skill has
-that file.
+The internal repository retains skills with the same declared name at distinct
+locations. Agent-facing tools and catalog select the first valid skill in
+configured storage order, using deterministic discovery order within a storage.
+Declared names may differ from directory names or database identifiers. Each
+discovered location belongs to the adapter that listed it; all three tools keep
+instructions, resources and preparation with that selected source. A missing
+resource fails even if another same-name skill has that file.
 
 Listing the same exact location twice is a configuration error, including within
 one adapter or when registering the same adapter twice. Discovery throws a
@@ -169,6 +189,8 @@ Share one `SkillRepository` between the toolkit and other application features,
 for example slash commands and explicit skill invocation. `catalog()` returns a
 list of `Skill` objects; `get($location)` returns the selected skill or throws a
 `RuntimeException` when that exact location is unavailable.
+`getByName($name)` returns the first valid skill in configured storage and
+discovery order, or throws when the name is unknown.
 `findByName($name)` returns all catalog skills with that exact declared name as a
 list of `Skill` objects, or `[]` when none match. The search is case sensitive;
 skills with the same name remain separate results.
@@ -205,9 +227,10 @@ them in their host agent.
 ## Custom Storage
 
 Implement [`SkillStorageInterface`](src/Storage/SkillStorageInterface.php) to
-load skills from another backend. It defines two methods:
+load skills from another backend. It defines exactly three methods:
 
 - `list()` returns complete canonical skill-root locations, without a trailing slash.
+- `resources($location)` returns all relative file paths belonging to that skill, including `SKILL.md`, scripts, configuration, references and assets. Enumeration remains confined to the skill root, includes files rather than directories and must bound traversal through links.
 - `read($location, $path)` reads content as a PHP string from a literal path relative to a catalog location.
 
 Each adapter defines its base URI, encodes its skill locations and translates
@@ -290,8 +313,9 @@ declared document name. An empty identifier causes discovery to fail with a
 `RuntimeException`. With base URI `db://team/`, identifier `team caveman` is discovered at
 `db://team/team%20caveman`. Identifier `literal%20name` becomes
 `db://team/literal%2520name`, and `café` becomes `db://team/caf%C3%A9`.
-Copy the catalog location verbatim into the tools and pass `references/guide.md`
-as a separate literal relative path. Database `path` values remain literal names:
+Pass the declared name to the tools and `references/guide.md` as a literal
+relative path to `skill_resources`. Direct repository access uses canonical
+locations. Database `path` values remain literal names:
 `references/my%20guide.md` in a call selects that exact stored key.
 Confined dot and parent segments work; absolute paths and paths escaping the
 selected skill fail.
@@ -299,8 +323,9 @@ selected skill fail.
 The base URI labels every skill in the selected table. Two base URIs over the same
 connection and table expose the same rows under different locations. Use separate
 tables or databases for data isolation; the base URI does not filter tenants. A
-filesystem skill with the same declared name remains independently selectable,
-and a missing database resource never falls back to that filesystem skill.
+filesystem skill with the same declared name remains in the internal catalog;
+agent-facing selection uses configured storage order, and a missing database
+resource never falls back to that filesystem skill.
 For example, register both adapters on the same toolkit:
 
 ```php
@@ -311,8 +336,9 @@ $toolkit = SkillToolkit::make()->fromStorage(
 ```
 
 A local `caveman` and database `team caveman` may both declare `name: caveman`;
-select their separate catalog locations to load each original document and its
-own resources. Registering two database adapters that emit the same location
+the tools select the local skill in this configuration. Direct repository
+access can still load either original document and its own resources by location.
+Registering two database adapters that emit the same location
 fails discovery as a duplicate-location configuration error.
 
 Catalog metadata is discovered lazily and retained by the repository. Documents

@@ -39,6 +39,7 @@ class DatabaseSkillToolkitTest extends TestCase
             new ToolCallMessage(null, [new ToolCall('skill_resources', 'guide', [
                 'name' => 'writing', 'paths' => ['references/guide.md', 'references/my %20 città.md'],
             ])]),
+            new ToolCallMessage(null, [new ToolCall('skill_script_prepare', 'prepare', ['name' => 'writing'])]),
             new AssistantMessage('Ready to write.'),
         );
         Agent::make()->setThreadId('database-skills-test')->setAiProvider($provider)->addTool($toolkit)
@@ -46,13 +47,38 @@ class DatabaseSkillToolkitTest extends TestCase
 
         $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clearly', $prompt);
-        $this->assertStringContainsString('location: db://team/editorial', $prompt);
+        $this->assertStringNotContainsString('db://', $prompt);
         $this->assertStringNotContainsString('Prefer concrete words.', $prompt);
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, $document));
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, json_encode(['resources' => [
             ['path' => 'references/guide.md', 'content' => 'Read references/my %20 città.md.'],
             ['path' => 'references/my %20 città.md', 'content' => "Prefer concrete words.\n"],
         ]], JSON_THROW_ON_ERROR)));
+        $provider->assertToolsConfigured(['skill', 'skill_resources', 'skill_script_prepare']);
+        $prepared = null;
+        foreach ($provider->getRecorded() as $record) {
+            foreach ($record->messages as $message) {
+                if ($message instanceof ToolResultMessage) {
+                    foreach ($message->getToolCalls() as $tool) {
+                        if ($tool->getName() === 'skill_script_prepare') {
+                            $prepared = json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR);
+                        }
+                    }
+                }
+            }
+        }
+        $this->assertNotNull($prepared);
+        try {
+            $this->assertSame($document, file_get_contents($prepared['directory'].'/SKILL.md'));
+            $this->assertSame(['SKILL.md', 'references/guide.md', 'references/my %20 città.md'], $prepared['files']);
+            $this->assertSame("Prefer concrete words.\n", file_get_contents($prepared['directory'].'/references/my %20 città.md'));
+        } finally {
+            foreach ($prepared['files'] as $path) {
+                unlink($prepared['directory'].'/'.$path);
+            }
+            rmdir($prepared['directory'].'/references');
+            rmdir($prepared['directory']);
+        }
         $this->assertCount(1, $repository->catalog());
         $this->assertEquals((object) ['author' => 'Human'], $repository->get('db://team/editorial')->readFrontmatter()->metadata);
     }
@@ -173,7 +199,12 @@ class DatabaseSkillToolkitTest extends TestCase
                 [[$local, $database], $localDocument, 'Local guide', 'database-only.md'],
                 [[$database, $local], $databaseDocument, 'Database guide', 'local-only.md'],
             ] as [$storages, $document, $guide, $missing]) {
-                [$load, $resources] = (new SkillToolkit(new SkillRepository(...$storages)))->tools();
+                $toolkit = new SkillToolkit(new SkillRepository(...$storages));
+                [$load, $resources, $prepare] = $toolkit->tools();
+                $this->assertSame(['skill', 'skill_resources', 'skill_script_prepare'], array_map(
+                    static fn ($tool): string => $tool->getName(), $toolkit->tools(),
+                ));
+                $this->assertStringNotContainsString('location:', $toolkit->guidelines() ?? '');
                 $load->setInputs(['name' => 'writing'])->execute();
                 $this->assertSame($document, $load->getResult());
                 $this->assertSame(['writing'], $resources->getProperties()[0]->getJsonSchema()['enum']);
@@ -188,6 +219,19 @@ class DatabaseSkillToolkitTest extends TestCase
                 $this->assertTrue($result->isError());
                 $this->assertStringContainsString($missing, $result->getText());
                 $this->assertStringNotContainsString($guide, $result->getText());
+                $prepare->setInputs(['name' => 'writing'])->execute();
+                $prepared = json_decode($prepare->getResult(), true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($document, file_get_contents($prepared['directory'].'/SKILL.md'));
+                $this->assertSame($guide, file_get_contents($prepared['directory'].'/guide.md'));
+                $this->assertFileDoesNotExist($prepared['directory'].'/'.$missing);
+                if ($storages[0] === $database) {
+                    foreach ($prepared['files'] as $path) {
+                        unlink($prepared['directory'].'/'.$path);
+                    }
+                    rmdir($prepared['directory']);
+                } else {
+                    $this->assertSame($directory.'/folder-id', $prepared['directory']);
+                }
                 $this->assertSame(['SKILL.md', 'guide.md', 'local-only.md'], array_values(array_diff(scandir($directory.'/folder-id'), ['.', '..'])));
             }
         } finally {
