@@ -357,7 +357,7 @@ class SkillRepositoryTest extends TestCase
         $this->assertSame("---\nname: shared\ndescription: First\n---\nFirst body", $repository->get('memory://skills/b-first/')->readDocument());
         $this->assertSame('First guide', $repository->get('memory://skills/b-first/')->readResource('guide.md'));
         $diagnostics = $repository->diagnostics();
-        $this->assertSame('memory://skills/a-invalid/', $diagnostics[0]['skill']);
+        $this->assertSame('memory://skills/a-invalid/', $diagnostics[0]['skillLocation']);
         $this->assertCount(1, $diagnostics);
         $this->assertSame('Last body', $repository->get('memory://skills/z-last/')->readInstructions());
     }

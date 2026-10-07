@@ -321,7 +321,8 @@ tool results.
 ## Error Handling
 
 Invalid or unreadable skill documents are skipped. Use `$skills->diagnostics()`
-to inspect loading problems and warnings. Duplicate skill locations instead fail
+to inspect loading problems and warnings; each entry contains `skillLocation`
+and `message`. Duplicate skill locations instead fail
 discovery as a configuration error; they are never skipped or treated as name
 shadowing.
 
