@@ -50,8 +50,8 @@ php examples/filesystem.php
 
 Ask: **“Usa php-check e spiegami i risultati.”**
 
-The trace should show `skill` with the filesystem location for `php-check`,
-`skill_resource` with path `references/checks.md`, then `bash` executing
+The trace should show `skill` with name `php-check`,
+`skill_resources` with name `php-check` and paths `["references/checks.md"]`, then `bash` executing
 `php scripts/check.php` from the skill directory. The script reports
 `PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and `PROC_OPEN`.
 
@@ -83,7 +83,7 @@ Words are whitespace-separated tokens. Lines follow Python's `splitlines()`:
 empty input has zero lines and a final newline does not add an extra line.
 Characters are Unicode code points, including spaces and line endings.
 
-Database storage only exposes text through `skill` and `skill_resource`; it does
+Database storage only exposes text through `skill` and `skill_resources`; it does
 not materialize or execute scripts. To run the resource, the agent needs to read
 it, save it to a temporary file, execute it with `python3` using the exact input,
 and clean up the temporary file. Inspect the trace to see whether the agent
@@ -109,8 +109,8 @@ Try these prompts in the same conversation:
 3. **“Use dante: write a tercet about a traveller crossing a forest.”**
 4. **“Usa text-stats per analizzare il testo Ciao città.”**
 
-For `dante`, the trace should show `skill_resource` reading
-`references/terzina.md`. The second verse should contain `copper lantern`,
+For `dante`, the trace should show `skill_resources` with name `dante` reading
+`["references/terzina.md"]`. The second verse should contain `copper lantern`,
 which appears only in that database reference.
 
 ## SQLite setup and local verification
