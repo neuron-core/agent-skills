@@ -1,16 +1,20 @@
-# Try the skills demo
+# Try the skills demos
 
-For a local SQLite storage check without model credentials or network calls,
-run `vendor/bin/phpunit tests/DatabaseExampleTest.php`.
+Three interactive examples use the same chat runner (`demo-chat.php`) and
+configure different skill storages:
 
-One interactive agent loads `php-check` from `skills/`, `caveman` from
-`.agents/skills/`, and `dante` from `skills.sqlite`.
+| Example | Storages | Skills |
+| --- | --- | --- |
+| `filesystem.php` | Two filesystem directories: `skills/` and `.agents/skills/` | `php-check`, `caveman` |
+| `database.php` | One SQLite database: `text-stats.sqlite` | `text-stats` |
+| `multiple.php` | Two filesystem directories and two SQLite databases | `php-check`, `caveman`, `dante`, `text-stats` |
 
 ## Setup
 
-You need PHP 8.1+, Composer, Node.js/npm and an OpenAI API key. For script
-execution, the PHP CLI needs `curl`, `json` and `proc_open`. The demo makes real
-API requests.
+You need PHP 8.1+, Composer and an OpenAI API key. SQLite examples also need PDO
+and `pdo_sqlite`. The PHP check script checks `curl`, `json` and `proc_open`.
+The text statistics script needs Python 3, with no additional packages.
+The interactive demos make real API requests.
 
 From the repository root:
 
@@ -23,175 +27,124 @@ cp examples/.env.example examples/.env
 Set `OPENAI_API_KEY` in `examples/.env`. The default model is `gpt-5.4-nano`;
 change `OPENAI_MODEL` if needed.
 
-Install `caveman` **from `examples/`**, then start the chat:
+For the filesystem and mixed examples, install `caveman` from `examples/`:
 
 ```sh
 cd examples
 npx skills add juliusbrussee/caveman --skill caveman --agent universal --yes
-php demo.php
 ```
 
-Run SQLite setup before starting the chat; `demo.php` expects `skills.sqlite`.
+Type `exit` or `quit` to stop a demo. Restart after installing new skills.
+The runner prints tool calls so you can inspect skill selection, resource reads
+and script execution. For `bash` results it prints only the status: `success`,
+`error`, or `returned` if no explicit status is available. It does not print result
+contents or results from other tools.
 
-## Try this conversation
+## 1. Filesystem only
 
-This example illustrates a conversation with location-based tool inputs;
-wording, paths and results can vary on your machine.
-
-```text
-$ php demo.php
-Available skills:
-- php-check: ... (location: file:///app/examples/skills/php-check)
-- caveman: ... (location: file:///app/examples/.agents/skills/caveman)
-- dante: ... (location: db://skills/dante)
-Use a skill when the user requests it or it is relevant to the task. ...
-
-See examples/README.md for setup and scenarios.
-
-Type a message, or 'exit' to quit.
-
-> use caveman skill to explain the universe
-
-[tool: skill {"location":"file:///app/examples/.agents/skills/caveman"}]
-
-Universe explain: space-time is a dynamical stage; matter/energy tells it how to curve; curvature tells matter/energy how to move.
-
-Big picture chain:
-- At smallest scales: quantum fields. Particles = field excitations.
-- Laws: gauge symmetry + quantum rules (Standard Model for known forces).
-- Gravity: usually modeled by general relativity (space-time curvature).
-- Early universe: hot, dense; rapid expansion (Big Bang model).
-- Structure growth: tiny density fluctuations → gravity collapse → galaxies/clusters.
-- Observations: expansion + CMB + light-element abundances support the model.
-- Fate: expansion keeps accelerating → dark energy term (unknown physics).
-
-“Why” it all exists: no confirmed answer; physics gives rules, not ultimate cause.
-
-> nice!
-
-Good.
-
-> now use php-check skill and explain the results
-
-[tool: skill {"location":"file:///app/examples/skills/php-check"}]
-
-[tool: skill_resource {"location":"file:///app/examples/skills/php-check","path":"references/checks.md"}]
-
-[tool: bash {"command":"php scripts/check.php","working_directory":"/app/examples/skills/php-check"}]
-
-PHP-check results (facts about *this* PHP CLI run):
-
-- **PHP 8.1+**: `PHP_VERSION=8.5.8` ✅ pass
-  Next step: none.
-
-- **curl extension**: `CURL_EXTENSION=loaded` ✅ pass
-  Next step: none.
-
-- **json extension**: `JSON_EXTENSION=loaded` ✅ pass
-  Next step: none.
-
-- **proc_open**: `PROC_OPEN=available` ✅ pass
-  Next step: none.
-
-All required checks pass, so the PHP CLI environment this script used meets the prerequisites. (It still doesn’t verify app config, network access, or whether an external API call succeeds.)
-
-> fine
-
-ok
-
-> quit
-```
-
-`skill` loads the instructions, `skill_resource` reads the reference, and `bash`
-executes the bundled script. The tools copy the complete catalog location and
-pass literal resource paths separately. The execution tool uses the decoded
-native local path as its working directory, not the `file:///` URI. Use
-`rawurldecode(substr($location, 7))` to decode a local catalog location once:
-`file:///app/my%20skills/check%2520` has the native directory
-`/app/my skills/check%20`. This lets relative script paths and neighboring assets
-resolve from the skill directory. Remote locations do not provide local execution
-access. The skill tools themselves only read text.
-
-The demo passes absolute directories under `__DIR__` to `FileSystemSkillStorage`,
-which constructs file base URIs internally. These use an empty host and an
-absolute path. See the
-[filesystem URI rules](../README.md#how-skills-work) for accepted forms and
-symlink boundaries.
-
-Script output contains `PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and
-`PROC_OPEN`; the agent explains any failed checks.
-
-## Try a writing skill
-
-The SQLite `dante` skill has one short reference file. Start
-`php demo.php` and ask: **“Usa dante: scrivi una terzina
-su un viandante nella selva.”**
-
-The trace should show `skill` with location `db://skills/dante`, followed by
-`skill_resource` with the same location and path `references/terzina.md`.
-The second verse should contain `lanterna di rame`, which appears only in the
-database reference.
-
-Type `exit` or `quit` to stop. Restart the script after installing new skills.
-For integration into your application, see the [Quick Start](../README.md#quick-start).
-
-## SQLite storage demo
-
-The setup uses PHP 8.1+, Composer, PDO and the `pdo_sqlite` driver. From the
-repository root:
+From the repository root:
 
 ```sh
-composer install
-php examples/sqlite-setup.php
-php examples/demo.php
+php examples/filesystem.php
 ```
 
-Setup creates `examples/skills.sqlite`, an ignored local file. It accepts an
-optional database filename as its first argument. The interactive demo reads
-the default `examples/skills.sqlite`. Use a dedicated demo database. Rerunning
-setup replaces the two `dante` resources and removes any old `demo-errors` rows.
+Ask: **“Usa php-check e spiegami i risultati.”**
 
-An existing demo database using the old `skill_name` column needs that column
-renamed to `skill_identifier` before rerunning setup; alternatively, use a new
-database filename with both commands.
+The trace should show `skill` with the filesystem location for `php-check`,
+`skill_resource` with path `references/checks.md`, then `bash` executing
+`php scripts/check.php` from the skill directory. The script reports
+`PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and `PROC_OPEN`.
 
-The application-side setup creates the default `skills` table with `skill_identifier`,
-`path` and `content`. Its composite primary key enforces uniqueness of
-`(skill_identifier, path)`, using SQLite's binary collation to preserve case-sensitive
-identities. All columns are non-null text. `SKILL.md` and
-`references/terzina.md` are rows in that same table. The backend identifier
-and declared skill name are both `dante`. The SKILL.md instructs the agent to
-read the reference before writing; its unique image appears only there.
+Filesystem catalog locations are `file:///` URIs. Execution tools need a native
+path as their working directory. Decode the catalog location once with
+`rawurldecode(substr($location, 7))`; relative script paths then resolve from
+that skill directory. The skill tools themselves only read text.
 
-The interactive demo constructs its own PDO connection and passes it to
-`new DatabaseSkillStorage($pdo)`. The agent's `skill` and
-`skill_resource` tools then read the document and its reference.
+## 2. Database only
 
-The default base URI `db://skills/` is a public address for all skills in the selected
-table. It is neither a connection string nor a tenant filter. Two base URIs over
-the same connection and table expose the same rows at different addresses. Use
-separate tables or databases for data isolation. To read an application-managed
-alternative table, pass its name using the `table` argument:
-
-```php
-$storage = new DatabaseSkillStorage($pdo, table: 'team_skills', baseUri: 'db://team/');
+```sh
+php examples/database.php
 ```
 
-The application owns schema creation, uniqueness, case-sensitive identity rules
-and data updates. The adapter discovers skills and returns the fetched `content`
-string; it never creates tables or populates them. PDO is its connection dependency, together
-with your database's PDO driver. Adapter queries target portable SQL, while this
-setup script's DDL and `INSERT OR REPLACE` are SQLite-specific demonstration
-code. Automated verification uses real SQLite; other PDO engines are not yet
-verified, and the setup script is not a cross-database migration framework.
+Ask: **“Usa text-stats per analizzare il testo Ciao città.”**
 
-Database locations expose content through the read tools. They do not provide
-local script access or execution, materialize files, or offer a dedicated binary
-transfer tool. The
-filesystem demo and its existing skill documents remain separate.
+The catalog location in this example is `db://skills/text-stats`. The script is stored as the
+`scripts/analyze.py` resource alongside `SKILL.md`. The skill simply tells the
+agent to run the script and report its JSON output, without storage-specific
+instructions.
 
-Run the example's automated checks with:
+For the exact text `Ciao città` (no final newline), expect:
+
+```json
+{"words": 2, "lines": 1, "characters": 10}
+```
+
+Words are whitespace-separated tokens. Lines follow Python's `splitlines()`:
+empty input has zero lines and a final newline does not add an extra line.
+Characters are Unicode code points, including spaces and line endings.
+
+Database storage only exposes text through `skill` and `skill_resource`; it does
+not materialize or execute scripts. To run the resource, the agent needs to read
+it, save it to a temporary file, execute it with `python3` using the exact input,
+and clean up the temporary file. Inspect the trace to see whether the agent
+handles this without storage-specific instructions in the skill.
+
+## 3. Two filesystems and two databases
+
+```sh
+php examples/multiple.php
+```
+
+The example configures four independent storages:
+
+- `skills/`: `php-check` on the filesystem.
+- `.agents/skills/`: the installed `caveman` skill on the filesystem.
+- `skills.sqlite`: `dante`, at `db://skills/dante`.
+- `text-stats.sqlite`: `text-stats`, at `db://text-stats/text-stats`.
+
+Try these prompts in the same conversation:
+
+1. **“Usa php-check e spiegami i risultati.”**
+2. **“Usa caveman per spiegare l'universo.”**
+3. **“Use dante: write a tercet about a traveller crossing a forest.”**
+4. **“Usa text-stats per analizzare il testo Ciao città.”**
+
+For `dante`, the trace should show `skill_resource` reading
+`references/terzina.md`. The second verse should contain `copper lantern`,
+which appears only in that database reference.
+
+## SQLite setup and local verification
+
+`sqlite-setup.php` creates two ignored local databases. It accepts optional paths:
+
+```sh
+php examples/sqlite-setup.php /tmp/dante.sqlite /tmp/text-stats.sqlite
+```
+
+The demos use the default paths under `examples/`. Setup replaces two resources
+in each database, and removes old `demo-errors` rows from `skills.sqlite`.
+An older demo database with a `skill_name` column needs that column renamed to
+`skill_identifier`, or must be recreated before running setup.
+
+The application owns schema creation and updates. Each database has a `skills`
+table with non-null `skill_identifier`, `path` and `content` columns, and a
+composite primary key on `(skill_identifier, path)` with binary collation.
+`DatabaseSkillStorage` only discovers skills and reads resource content.
+The setup's DDL and `INSERT OR REPLACE` are SQLite-specific; they are not a
+cross-database migration framework.
+
+Base URIs identify public locations, not connections or tenant filters. The
+mixed example uses distinct databases and distinct base URIs. Different URIs
+alone would not isolate rows in the same database and table.
+
+Run the local checks without model credentials or network calls:
 
 ```sh
 vendor/bin/phpunit tests/DatabaseExampleTest.php
 ```
+
+They verify database reads and execute the stored Python script from a temporary
+file against Unicode, multiline, empty and final-newline inputs. They require
+`python3`. They do not verify a live model's execution choices.
+
+For application integration, see the [Quick Start](../README.md#quick-start).
