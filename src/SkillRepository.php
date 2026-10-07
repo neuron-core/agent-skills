@@ -9,6 +9,7 @@ use Throwable;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 
 use function array_key_exists;
+use function array_filter;
 use function array_map;
 use function array_values;
 use function sort;
@@ -23,13 +24,16 @@ class SkillRepository
     /** @var array<string, Skill> */
     protected array $catalog = [];
 
-    /** @var list<array{skill: string, message: string}> */
+    /** @var list<array{skillLocation: string, message: string}> */
     protected array $diagnostics = [];
+
+    /** @var array<string, true> */
+    private array $discoveredLocations = [];
 
     /** @var array<int, SkillStorageInterface> */
     private array $pendingStorages = [];
 
-    /** @return list<array{skill: string, message: string}> */
+    /** @return list<array{skillLocation: string, message: string}> */
     public function diagnostics(): array
     {
         $this->resolveCatalog();
@@ -62,15 +66,24 @@ class SkillRepository
     }
 
     /** @throws RuntimeException */
-    public function get(string $name): Skill
+    public function get(string $location): Skill
     {
         $catalog = $this->resolveCatalog();
 
-        if (!array_key_exists($name, $catalog)) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $name));
+        if (!array_key_exists($location, $catalog)) {
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
         }
 
-        return $catalog[$name];
+        return $catalog[$location];
+    }
+
+    /** @return list<Skill> */
+    public function findByName(string $name): array
+    {
+        return array_values(array_filter(
+            $this->catalog(),
+            static fn (Skill $skill): bool => $skill->name() === $name,
+        ));
     }
 
     /** @return array<string, Skill> */
@@ -79,12 +92,14 @@ class SkillRepository
         foreach ($this->pendingStorages as $index => $storage) {
             $catalog = $this->catalog;
             $diagnostics = $this->diagnostics;
+            $locations = $this->discoveredLocations;
 
             try {
                 $this->buildCatalog($storage);
             } catch (Throwable $exception) {
                 $this->catalog = $catalog;
                 $this->diagnostics = $diagnostics;
+                $this->discoveredLocations = $locations;
                 throw $exception;
             }
 
@@ -96,34 +111,41 @@ class SkillRepository
 
     protected function buildCatalog(SkillStorageInterface $storage): void
     {
-        $skills = $storage->list();
-        sort($skills, SORT_STRING);
+        $skillLocations = $storage->list();
+        sort($skillLocations, SORT_STRING);
 
-        foreach ($skills as $skill) {
+        foreach ($skillLocations as $skillLocation) {
+            if (array_key_exists($skillLocation, $this->discoveredLocations)) {
+                throw new RuntimeException(sprintf('Duplicate skill location "%s".', $skillLocation));
+            }
+
+            $this->discoveredLocations[$skillLocation] = true;
+        }
+
+        foreach ($skillLocations as $skillLocation) {
             try {
-                $contents = $storage->read($skill, self::MANIFEST);
+                $contents = $storage->read($skillLocation, self::MANIFEST);
             } catch (RuntimeException $exception) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => $exception->getMessage()];
+                $this->diagnostics[] = ['skillLocation' => $skillLocation, 'message' => $exception->getMessage()];
                 continue;
             }
 
-            $parsed = (new SkillDocumentParser())->parse($contents, $skill);
+            $parsed = (new SkillDocumentParser())->parse($contents);
             foreach ($parsed['warnings'] as $message) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => $message];
+                $this->diagnostics[] = ['skillLocation' => $skillLocation, 'message' => $message];
             }
+
             $document = $parsed['document'];
             if ($document === null) {
                 continue;
             }
-            $name = $document['name'];
-            if (array_key_exists($name, $this->catalog)) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => sprintf(
-                    'Skill "%s" is shadowed by an earlier candidate with the same name.',
-                    $name,
-                )];
-                continue;
-            }
-            $this->catalog[$name] = new Skill($name, $document['description'], $storage, $skill);
+
+            $this->catalog[$skillLocation] = new Skill(
+                $document['name'],
+                $document['description'],
+                $skillLocation,
+                $storage
+            );
         }
     }
 }

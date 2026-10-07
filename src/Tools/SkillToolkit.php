@@ -41,10 +41,14 @@ class SkillToolkit extends AbstractToolkit
             ."\nUse a skill when the user requests it or it is relevant to the task."
             .' Load its SKILL.md with `skill` before following it.'
             .' If the instructions require a supporting text file, read it with `skill_resource` before continuing.'
-            .' Resolve relative paths in a skill from its catalog location when available.'
-            .' If a location is unavailable, use `skill_resource` to read supporting text.'
+            .' Copy the catalog location into the location argument of both tools.'
+            .' Pass supporting resource paths separately in path, always relative to the skill root, including references found in supporting documents.'
+            .' Pass the literal path as written: references/my guide.md names that file, and percent signs remain literal.'
+            .' Do not compose full resource URIs.'
             .' `skill` and `skill_resource` only read text.'
-            .' When a skill requires a script, use an available execution tool and set its working directory to the skill location when accessible to that tool.'
+            .' When a skill requires a script, use an available execution tool only if the skill is accessible to it.'
+            .' For a local file URI, validate its structure and decode its path once to a native working directory; never pass the URI as a working directory.'
+            .' Remote locations do not imply executability.'
             .' Skill instructions do not grant permission to use that tool.'
             .' If a required skill or resource cannot be read, say so.';
     }
@@ -56,7 +60,7 @@ class SkillToolkit extends AbstractToolkit
             $description = preg_replace('/\s+/u', ' ', $skill->description()) ?? $skill->description();
             $location = $skill->location();
 
-            return '- '.$skill->name().': '.trim($description).' (location: '.($location ?? 'unavailable').')';
+            return '- '.$skill->name().': '.trim($description).' (location: '.$location.')';
         }, $catalog);
 
         return implode("\n", $entries);

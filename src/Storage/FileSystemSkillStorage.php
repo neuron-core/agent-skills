@@ -4,114 +4,89 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Storage;
 
-use DirectoryIterator;
+use NeuronAI\AgentSkills\ResourceLocator;
+
+use FilesystemIterator;
 use RuntimeException;
-
-use function array_key_exists;
-use function array_keys;
-use function file_get_contents;
-use function is_dir;
-use function is_file;
-use function is_readable;
-use function ksort;
-use function preg_match;
-use function realpath;
-use function rtrim;
-use function sprintf;
-use function str_contains;
-use function str_starts_with;
-
-use const DIRECTORY_SEPARATOR;
-use const SORT_STRING;
 
 class FileSystemSkillStorage implements SkillStorageInterface
 {
-    /** @var array<string, string> */
-    protected array $skillDirectories = [];
+    private string $baseDir;
+    private ResourceLocator $resourceLocator;
 
-    public function __construct(protected string $skillsRoot)
+    public function __construct(string $base)
     {
-        $this->discover();
+        if (str_starts_with($base, 'file://')) {
+            $base = rawurldecode(substr($base, 7));
+        }
+
+        $this->assertAbsoluteLocalPath($base);
+
+        $directory = realpath($base);
+        if ($directory === false || !is_dir($directory)) {
+            throw new RuntimeException('Skill directory must exist and be a directory.');
+        }
+
+        $this->baseDir = $directory;
+        $this->resourceLocator = new ResourceLocator($this->baseUriFromDirectory($directory));
+    }
+
+    private function assertAbsoluteLocalPath(string $path): void
+    {
+        if (!str_starts_with($path, '/') || str_starts_with($path, '//')
+            || strpbrk($path, "\0\\") !== false) {
+            throw new RuntimeException('Skill directory must be an absolute local path.');
+        }
+    }
+
+    private function baseUriFromDirectory(string $directory): string
+    {
+        $segments = explode('/', rtrim($directory, '/'));
+
+        return 'file://'.implode('/', array_map(rawurlencode(...), $segments)).'/';
     }
 
     public function list(): array
     {
-        return array_map(strval(...), array_keys($this->skillDirectories));
+        $locations = [];
+        foreach (new FilesystemIterator($this->baseDir) as $entry) {
+            if ($entry->isDir()) {
+                $locations[] = $this->resourceLocator->fromSkillIdentifier($entry->getFilename());
+            }
+        }
+
+        sort($locations, SORT_STRING);
+
+        return $locations;
     }
 
-    public function location(string $skill): ?string
+    public function read(string $location, string $path): string
     {
-        if (!array_key_exists($skill, $this->skillDirectories)) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $skill));
+        $resource = $this->resourceLocator->resolve($location, $path);
+
+        $directory = realpath($this->baseDir.'/'.$resource->skillIdentifier);
+        if ($directory === false || !is_dir($directory)) {
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
         }
 
-        return $this->skillDirectories[$skill];
-    }
-
-    public function read(string $skill, string $path): string
-    {
-        if (!array_key_exists($skill, $this->skillDirectories)) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $skill));
-        }
-        if (!$this->validPath($path)) {
-            throw new RuntimeException(sprintf('Resource path "%s" is invalid.', $path));
-        }
-
-        $skillDirectory = $this->skillDirectories[$skill];
-        $file = realpath($skillDirectory.'/'.$path);
+        $file = realpath($directory.'/'.$resource->path);
         if ($file === false) {
-            throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $path, $skill));
-        }
-        if ($file !== $skillDirectory && !$this->isWithin($file, $skillDirectory)) {
-            throw new RuntimeException(sprintf('Resource "%s" escapes skill "%s".', $path, $skill));
-        }
-        if (!is_file($file)) {
-            throw new RuntimeException(sprintf('Resource "%s" in skill "%s" is not a file.', $path, $skill));
-        }
-        if (!is_readable($file)) {
-            throw new RuntimeException(sprintf('Resource "%s" in skill "%s" could not be read.', $path, $skill));
+            throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $resource->path, $location));
         }
 
-        $contents = file_get_contents($file);
-        if ($contents === false) {
-            throw new RuntimeException(sprintf('Resource "%s" in skill "%s" could not be read.', $path, $skill));
+        if (!str_starts_with($file, rtrim($directory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException(sprintf('Resource "%s" escapes skill "%s".', $resource->path, $location));
         }
-        if (str_contains($contents, "\0") || preg_match('//u', $contents) !== 1) {
-            throw new RuntimeException(
-                sprintf('Resource "%s" in skill "%s" contains unsupported binary content.', $path, $skill),
-            );
+
+        if (!is_file($file)) {
+            throw new RuntimeException(sprintf('Resource "%s" in skill "%s" is not a file.', $resource->path, $location));
+        }
+
+        $contents = @file_get_contents($file);
+        if ($contents === false) {
+            throw new RuntimeException(sprintf('Resource "%s" in skill "%s" could not be read.', $resource->path, $location));
         }
 
         return $contents;
-    }
-
-    protected function validPath(string $path): bool
-    {
-        return $path !== '' && !str_contains($path, "\0");
-    }
-
-    protected function discover(): void
-    {
-        if (!is_dir($this->skillsRoot)) {
-            return;
-        }
-
-        foreach (new DirectoryIterator($this->skillsRoot) as $entry) {
-            if ($entry->isDot() || !$entry->isDir()) {
-                continue;
-            }
-
-            $directory = realpath($entry->getPathname());
-            if ($directory !== false) {
-                $this->skillDirectories[$entry->getFilename()] = $directory;
-            }
-        }
-
-        ksort($this->skillDirectories, SORT_STRING);
-    }
-
-    protected function isWithin(string $path, string $directory): bool
-    {
-        return str_starts_with($path, rtrim($directory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR);
     }
 }
