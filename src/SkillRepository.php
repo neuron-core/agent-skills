@@ -143,8 +143,8 @@ class SkillRepository
             $this->catalog[$skill] = new Skill(
                 $document['name'],
                 $document['description'],
-                $storage,
-                $skill
+                $skill,
+                $storage
             );
         }
     }
