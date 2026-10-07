@@ -25,11 +25,11 @@ class DatabaseSkillStorage implements SkillStorageInterface
             throw new RuntimeException('Skill table must be a simple SQL identifier.');
         }
 
-        if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $baseUri) !== 1) {
-            throw new RuntimeException('Skill base URI must be a complete db:// URI ending in a slash.');
+        if (preg_match('~^db://[a-z0-9-]+(?:/[a-z0-9-]+)*/?$~D', $baseUri) !== 1) {
+            throw new RuntimeException('Skill base URI must be a complete db:// URI.');
         }
 
-        $this->resourceLocator = new ResourceLocator($baseUri);
+        $this->resourceLocator = new ResourceLocator(rtrim($baseUri, '/').'/');
     }
 
     public function list(): array

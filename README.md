@@ -246,7 +246,8 @@ The constructor takes the application's PDO connection, an optional base URI
 lowercase column names `skill_identifier`, `path` and `content`.
 Database base URIs use `db://label/` with optional
 nested segments, for example `db://team/project/`. Labels and segments contain
-lowercase ASCII letters, digits or hyphens; a trailing slash is required.
+lowercase ASCII letters, digits or hyphens; a trailing slash is optional and
+normalized internally, so `db://team` and `db://team/` address the same skills.
 Credentials, ports, queries, fragments and dot segments are not accepted.
 Table names must be simple unqualified SQL identifiers: a letter or underscore,
 followed by letters, digits or underscores. Choose a name that is not a reserved

@@ -36,6 +36,26 @@ class DatabaseSkillStorageTest extends TestCase
         $this->assertSame('Guide', $storage->read('db://team/project/writing', 'references/guide.md'));
     }
 
+    /** @dataProvider baseUris */
+    public function test_base_uri_accepts_an_optional_trailing_slash(string $baseUri, string $location): void
+    {
+        $storage = new DatabaseSkillStorage($this->pdo, baseUri: $baseUri);
+
+        $this->assertSame([$location], $storage->list());
+        $this->assertSame('Guide', $storage->read($location, 'references/guide.md'));
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function baseUris(): array
+    {
+        return [
+            'label without slash' => ['db://team', 'db://team/writing'],
+            'label with slash' => ['db://team/', 'db://team/writing'],
+            'nested without slash' => ['db://team/project', 'db://team/project/writing'],
+            'nested with slash' => ['db://team/project/', 'db://team/project/writing'],
+        ];
+    }
+
     /** @dataProvider identifiersWithSpecialCharacters */
     public function test_identifiers_with_special_characters_round_trip(string $identifier): void
     {
@@ -200,7 +220,8 @@ class DatabaseSkillStorageTest extends TestCase
         return [
             'wrong scheme' => ['file:///skills/', 'skills'],
             'missing label' => ['db:///', 'skills'],
-            'missing slash' => ['db://team', 'skills'],
+            'repeated trailing slash' => ['db://team//', 'skills'],
+            'empty nested segment' => ['db://team//project', 'skills'],
             'credentials' => ['db://user:pass@team/', 'skills'],
             'query' => ['db://team/?tenant=1', 'skills'],
             'fragment' => ['db://team/#part', 'skills'],
