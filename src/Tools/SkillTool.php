@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace NeuronAI\AgentSkills\Tools;
 
 use RuntimeException;
-use NeuronAI\AgentSkills\Skill;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\Tools\PropertyType;
 use NeuronAI\Tools\Tool;
@@ -28,19 +27,19 @@ class SkillTool extends Tool
     {
         return [
             new ToolProperty(
-                name: 'location',
+                name: 'name',
                 type: PropertyType::STRING,
-                description: 'The complete catalog location of the skill to load.',
+                description: 'The declared name of the skill to load.',
                 required: true,
-                enum: array_map(static fn (Skill $skill): string => $skill->location(), $this->repository->catalog()),
+                enum: array_values(array_unique($this->repository->names())),
             ),
         ];
     }
 
-    public function __invoke(string $location): string
+    public function __invoke(string $name): string
     {
         try {
-            return $this->repository->get($location)->readDocument();
+            return $this->repository->getByName($name)->readDocument();
         } catch (RuntimeException $exception) {
             return $exception->getMessage();
         }

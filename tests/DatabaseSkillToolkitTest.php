@@ -33,7 +33,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         $toolkit = new SkillToolkit($repository);
         $provider = new FakeAIProvider(
-            new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['location' => 'db://team/editorial'])]),
+            new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['name' => 'writing'])]),
             new ToolCallMessage(null, [new ToolCall('skill_resource', 'guide', [
                 'location' => 'db://team/editorial', 'path' => 'references/guide.md',
             ])]),
@@ -74,7 +74,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertSame('Newly available resource', $skill->readResource('guide.md'));
         $this->assertSame(['writing'], $repository->names());
         $this->assertSame($guidelines, $toolkit->guidelines());
-        $activation->setInputs(['location' => 'db://team/writing'])->execute();
+        $activation->setInputs(['name' => 'writing'])->execute();
         $this->assertSame($updated, $activation->getResult());
         $pdo->prepare('UPDATE skills SET content = ? WHERE path = ?')->execute(['Updated guide', 'guide.md']);
         $resource->setInputs(['location' => 'db://team/writing', 'path' => 'guide.md'])->execute();
@@ -130,13 +130,13 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertStringContainsString('was not found', $resource->getResult());
         $resource->setInputs(['location' => 'db://team/writing', 'path' => '../other.md'])->execute();
         $this->assertStringContainsString('escapes', $resource->getResult());
-        $activation->setInputs(['location' => 'db://team/unknown'])->execute();
+        $activation->setInputs(['name' => 'unknown'])->execute();
         $result = $activation->getResult();
         $this->assertInstanceOf(ToolOutput::class, $result);
         $this->assertTrue($result->isError());
         $this->assertStringContainsString('must be one of', $result->getText());
         $pdo->exec('DROP TABLE skills');
-        $activation->setInputs(['location' => 'db://team/writing'])->execute();
+        $activation->setInputs(['name' => 'writing'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', $activation->getResult());
         $resource->setInputs(['location' => 'db://team/writing', 'path' => 'guide.md'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', $resource->getResult());

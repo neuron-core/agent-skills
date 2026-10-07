@@ -38,10 +38,11 @@ class SkillToolkit extends AbstractToolkit
         }
 
         return "Available skills:\n".$this->formatCatalog($catalog)
+            ."\nPass the declared name in `name` to `skill`. For duplicate names, the first configured storage wins."
             ."\nUse a skill when the user requests it or it is relevant to the task."
             .' Load its SKILL.md with `skill` before following it.'
             .' If the instructions require a supporting text file, read it with `skill_resource` before continuing.'
-            .' Copy the catalog location into the location argument of both tools.'
+            .' Copy the catalog location into the location argument of `skill_resource`.'
             .' Pass supporting resource paths separately in path, always relative to the skill root, including references found in supporting documents.'
             .' Pass the literal path as written: references/my guide.md names that file, and percent signs remain literal.'
             .' Do not compose full resource URIs.'

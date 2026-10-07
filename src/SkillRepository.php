@@ -77,6 +77,18 @@ class SkillRepository
         return $catalog[$location];
     }
 
+    /** @throws RuntimeException */
+    public function getByName(string $name): Skill
+    {
+        $matches = $this->findByName($name);
+
+        if ($matches === []) {
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $name));
+        }
+
+        return $matches[0];
+    }
+
     /** @return list<Skill> */
     public function findByName(string $name): array
     {
