@@ -30,8 +30,8 @@ class DatabaseSkillIdentityTest extends TestCase
         $this->assertSame(['db://team/Caveman', 'db://team/caveman'], array_map(
             static fn (Skill $skill): string => $skill->location(), $repository->catalog(),
         ));
-        $this->assertStringContainsString('Uppercase source (location: db://team/Caveman)', $toolkit->guidelines() ?? '');
-        $this->assertStringContainsString('Lowercase source (location: db://team/caveman)', $toolkit->guidelines() ?? '');
+        $this->assertStringContainsString('caveman: Uppercase source', $toolkit->guidelines() ?? '');
+        $this->assertStringNotContainsString('Lowercase source', $toolkit->guidelines() ?? '');
         $this->assertSame($upper, $repository->get('db://team/Caveman')->readDocument());
         $this->assertSame($lower, $repository->get('db://team/caveman')->readDocument());
         $this->assertSame('Uppercase path', $repository->get('db://team/caveman')->readResource('Guide.md'));
@@ -82,7 +82,7 @@ class DatabaseSkillIdentityTest extends TestCase
         [$activation, $resource] = $toolkit->tools();
         foreach ($documents as $identifier => [$location, $document]) {
             $this->assertSame($location, $repository->get($location)->location());
-            $this->assertStringContainsString('location: '.$location.')', $toolkit->guidelines() ?? '');
+            $this->assertStringNotContainsString($location, $toolkit->guidelines() ?? '');
             $activation->setInputs(['name' => 'caveman'])->execute();
             $this->assertSame($documents['café'][1], $activation->getResult());
             $resource->setInputs(['name' => 'caveman', 'paths' => ['notes%20.md']])->execute();
@@ -112,7 +112,8 @@ class DatabaseSkillIdentityTest extends TestCase
         $this->assertCount(3, $repository->catalog());
         [$activation, $resource] = $toolkit->tools();
         foreach (['db://first/writing', 'db://second/writing'] as $location) {
-            $this->assertStringContainsString('Shared table (location: '.$location.')', $toolkit->guidelines() ?? '');
+            $this->assertStringContainsString('writing: Shared table', $toolkit->guidelines() ?? '');
+            $this->assertStringNotContainsString($location, $toolkit->guidelines() ?? '');
             $activation->setInputs(['name' => 'writing'])->execute();
             $this->assertSame($document, $activation->getResult());
             $resource->setInputs(['name' => 'writing', 'paths' => ['guide.md']])->execute();

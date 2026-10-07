@@ -120,7 +120,7 @@ class SkillToolkitTest extends TestCase
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
         $this->assertStringContainsString('Read required instructions and references with `skill_resources`, using the declared skill name', $systemPrompt);
-        $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing', $systemPrompt);
+        $this->assertStringNotContainsString('file://', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult(
@@ -158,7 +158,8 @@ class SkillToolkitTest extends TestCase
                 ->chat(new UserMessage('Read the skill and supporting resources.'))->getMessage();
 
             $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
-            $this->assertStringContainsString('writing: Write clear prose (location: '.$location.')', $prompt);
+            $this->assertStringContainsString('writing: Write clear prose', $prompt);
+            $this->assertStringNotContainsString('location:', $prompt);
             $this->assertStringContainsString('For scripts, call `skill_script_prepare` with the declared skill name.', $prompt);
             $this->assertStringContainsString('After successful preparation, use the returned directory.', $prompt);
             $this->assertStringContainsString('Run the command specified by the skill from that directory with a separate execution tool.', $prompt);
@@ -679,7 +680,7 @@ class SkillToolkitTest extends TestCase
         $activation = $toolkit->tools()[0];
         $activation->setInputs(['name' => 'writing'])->execute();
         $this->assertSame($document, $activation->getResult());
-        $this->assertStringContainsString('location: file://'.$this->skillsRoot.'/writing', $toolkit->guidelines() ?? '');
+        $this->assertStringNotContainsString('file://', $toolkit->guidelines() ?? '');
     }
 
     /** @dataProvider locationFailures */
@@ -755,7 +756,7 @@ class SkillToolkitTest extends TestCase
         $toolkit = new SkillToolkit(new SkillRepository($storage));
         $guidelines = $toolkit->guidelines() ?? '';
         $this->assertStringNotContainsString('x-extension', $guidelines);
-        $this->assertStringContainsString('location: skills://workspace/source-id/', $guidelines);
+        $this->assertStringNotContainsString('skills://', $guidelines);
         [$activation, $resource] = $toolkit->tools();
         $activation->setInputs(['name' => 'declared'])->execute();
         $this->assertSame($document, $activation->getResult());
@@ -764,7 +765,7 @@ class SkillToolkitTest extends TestCase
         $this->assertSame($this->resourceResult('references/guide.md', 'Lazy guide'), $resource->getResult());
     }
 
-    public function test_host_tool_executes_the_file_at_the_activated_location_with_neighboring_binary_asset(): void
+    public function test_host_tool_executes_from_prepared_local_directory_with_neighboring_binary_asset(): void
     {
         $directory = $this->skillsRoot.'/writing %25 café#';
         rename($this->skillsRoot.'/writing', $directory);
@@ -780,17 +781,18 @@ class SkillToolkitTest extends TestCase
         try {
             $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
             $toolkit = new SkillToolkit($repository);
-            $location = $repository->catalog()[0]->location();
-            $this->assertSame('file://'.$this->skillsRoot.'/writing%20%2525%20caf%C3%A9%23', $location);
-            // A discovered local file URI is decoded once for the host execution tool.
-            $nativePath = rawurldecode(substr($location, 7));
-            $this->assertSame($directory, $nativePath);
+            $prepare = $toolkit->tools()[2];
+            $prepare->setInputs(['name' => 'writing'])->execute();
+            $prepared = json_decode($prepare->getResult(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($directory, $prepared['directory']);
+            $nativePath = $prepared['directory'];
             $host = new BashTool();
             $provider = new FakeAIProvider(
                 new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['name' => 'writing'])]),
                 new ToolCallMessage(null, [new ToolCall('skill_resources', 'read_script', [
                     'name' => 'writing', 'paths' => ['scripts/check.php'],
                 ])]),
+                new ToolCallMessage(null, [new ToolCall('skill_script_prepare', 'prepare', ['name' => 'writing'])]),
                 new ToolCallMessage(null, [new ToolCall('bash', 'host_check', [
                     'command' => escapeshellarg(PHP_BINARY).' scripts/check.php',
                     'working_directory' => $nativePath,

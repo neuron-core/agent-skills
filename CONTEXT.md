@@ -18,7 +18,8 @@ The fields in a skill document's frontmatter, including its name and description
 
 **Skill name**:
 The name declared in a skill document's metadata. Different skills may share
-the same name; the name alone does not identify the selected skill.
+the same name. Agent-facing selection chooses the first valid skill in configured
+storage order, with discovery order breaking ties within a storage.
 
 **Skill identifier**:
 The key identifying a skill within one storage, such as its directory name or
@@ -32,9 +33,17 @@ are interpreted, whether the skill is stored in a directory or another backend.
 A file belonging to a skill, including its skill document, references, scripts
 or assets.
 
+**Prepared script directory**:
+A local directory containing every resource of the selected skill for execution.
+It may be the original skill directory or a temporary directory holding resource copies.
+
 **Skill catalog**:
-The names, descriptions and locations of skills available for an agent to
-discover before loading their instructions.
+The internal collection of available skills, retaining names, descriptions,
+canonical locations and storage ownership. Same-name skills remain distinct.
+
+**Agent-facing skill catalog**:
+One selected entry per declared skill name, containing only its name and
+description so an agent can discover skills before loading their instructions.
 
 **Skill storage**:
 A source containing skills and their supporting resources.
