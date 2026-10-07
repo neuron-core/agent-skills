@@ -179,7 +179,7 @@ class SkillScriptPrepareToolTest extends TestCase
         );
         $agent = Agent::make()->setThreadId('skill-prepare-test')->setAiProvider($provider)->addTool($toolkit);
         self::assertSame('Prepared.', $agent->chat(new UserMessage('Prepare declared.'))->getMessage()->getContent());
-        $provider->assertToolsConfigured(['skill', 'skill_resources', 'skill_script_prepare']);
+        $provider->assertToolsConfigured(['skill', 'skill_resource', 'skill_script_prepare']);
         $found = false;
         foreach ($provider->getRecorded()[1]->messages as $message) {
             if ($message instanceof ToolResultMessage) {

@@ -36,8 +36,11 @@ class DatabaseSkillToolkitTest extends TestCase
         $toolkit = new SkillToolkit($repository);
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['name' => 'writing'])]),
-            new ToolCallMessage(null, [new ToolCall('skill_resources', 'guide', [
-                'name' => 'writing', 'paths' => ['references/guide.md', 'references/my %20 città.md'],
+            new ToolCallMessage(null, [new ToolCall('skill_resource', 'guide', [
+                'name' => 'writing', 'path' => 'references/guide.md',
+            ])]),
+            new ToolCallMessage(null, [new ToolCall('skill_resource', 'nested', [
+                'name' => 'writing', 'path' => 'references/my %20 città.md',
             ])]),
             new ToolCallMessage(null, [new ToolCall('skill_script_prepare', 'prepare', ['name' => 'writing'])]),
             new AssistantMessage('Ready to write.'),
@@ -50,11 +53,9 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertStringNotContainsString('db://', $prompt);
         $this->assertStringNotContainsString('Prefer concrete words.', $prompt);
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, $document));
-        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, json_encode(['resources' => [
-            ['path' => 'references/guide.md', 'content' => 'Read references/my %20 città.md.'],
-            ['path' => 'references/my %20 città.md', 'content' => "Prefer concrete words.\n"],
-        ]], JSON_THROW_ON_ERROR)));
-        $provider->assertToolsConfigured(['skill', 'skill_resources', 'skill_script_prepare']);
+        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, 'Read references/my %20 città.md.'));
+        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, "Prefer concrete words.\n"));
+        $provider->assertToolsConfigured(['skill', 'skill_resource', 'skill_script_prepare']);
         $prepared = null;
         foreach ($provider->getRecorded() as $record) {
             foreach ($record->messages as $message) {
@@ -108,8 +109,8 @@ class DatabaseSkillToolkitTest extends TestCase
         $activation->setInputs(['name' => 'writing'])->execute();
         $this->assertSame($updated, $activation->getResult());
         $pdo->prepare('UPDATE skills SET content = ? WHERE path = ?')->execute(['Updated guide', 'guide.md']);
-        $resource->setInputs(['name' => 'writing', 'paths' => ['guide.md']])->execute();
-        $this->assertSame($this->resourceResult('guide.md', 'Updated guide'), $resource->getResult());
+        $resource->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
+        $this->assertSame('Updated guide', $resource->getResult());
         $this->assertSame('Updated guide', $skill->readResource('guide.md'));
         $pdo->exec("DELETE FROM skills WHERE path = 'guide.md'");
         $resource->execute();
@@ -157,9 +158,9 @@ class DatabaseSkillToolkitTest extends TestCase
         ]);
         $repository = new SkillRepository(new DatabaseSkillStorage($pdo, baseUri: 'db://team/'));
         [$activation, $resource] = (new SkillToolkit($repository))->tools();
-        $resource->setInputs(['name' => 'writing', 'paths' => ['missing.md']])->execute();
+        $resource->setInputs(['name' => 'writing', 'path' => 'missing.md'])->execute();
         $this->assertStringContainsString('was not found', (string) $resource->getResult());
-        $resource->setInputs(['name' => 'writing', 'paths' => ['../other.md']])->execute();
+        $resource->setInputs(['name' => 'writing', 'path' => '../other.md'])->execute();
         $this->assertStringContainsString('escapes', (string) $resource->getResult());
         $activation->setInputs(['name' => 'unknown'])->execute();
         $result = $activation->getResult();
@@ -169,16 +170,16 @@ class DatabaseSkillToolkitTest extends TestCase
         $pdo->exec('DROP TABLE skills');
         $activation->setInputs(['name' => 'writing'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', $activation->getResult());
-        $resource->setInputs(['name' => 'writing', 'paths' => ['guide.md']])->execute();
+        $resource->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', (string) $resource->getResult());
 
         $this->expectException(RuntimeException::class);
         $repository->get('db://team/writing')->readResource('guide.md');
     }
 
-    public function test_mixed_sources_keep_batch_reads_with_the_selected_document_without_fallback(): void
+    public function test_mixed_sources_keep_resource_reads_with_the_selected_document_without_fallback(): void
     {
-        $directory = sys_get_temp_dir().'/neuron-batch-'.bin2hex(random_bytes(8));
+        $directory = sys_get_temp_dir().'/neuron-resource-'.bin2hex(random_bytes(8));
         mkdir($directory.'/folder-id', 0o700, true);
         $localDocument = "---\nname: writing\ndescription: Local writing\n---\nLocal instructions.";
         $databaseDocument = "---\nname: writing\ndescription: Database writing\n---\nDatabase instructions.";
@@ -201,19 +202,16 @@ class DatabaseSkillToolkitTest extends TestCase
             ] as [$storages, $document, $guide, $missing]) {
                 $toolkit = new SkillToolkit(new SkillRepository(...$storages));
                 [$load, $resources, $prepare] = $toolkit->tools();
-                $this->assertSame(['skill', 'skill_resources', 'skill_script_prepare'], array_map(
+                $this->assertSame(['skill', 'skill_resource', 'skill_script_prepare'], array_map(
                     static fn ($tool): string => $tool->getName(), $toolkit->tools(),
                 ));
                 $this->assertStringNotContainsString('location:', $toolkit->guidelines() ?? '');
                 $load->setInputs(['name' => 'writing'])->execute();
                 $this->assertSame($document, $load->getResult());
                 $this->assertSame(['writing'], $resources->getProperties()[0]->getJsonSchema()['enum']);
-                $resources->setInputs(['name' => 'writing', 'paths' => ['SKILL.md', 'guide.md']])->execute();
-                $this->assertSame(['resources' => [
-                    ['path' => 'SKILL.md', 'content' => $document],
-                    ['path' => 'guide.md', 'content' => $guide],
-                ]], json_decode($resources->getResult(), true, flags: JSON_THROW_ON_ERROR));
-                $resources->setInputs(['name' => 'writing', 'paths' => ['guide.md', $missing]])->execute();
+                $resources->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
+                $this->assertSame($guide, $resources->getResult());
+                $resources->setInputs(['name' => 'writing', 'path' => $missing])->execute();
                 $result = $resources->getResult();
                 $this->assertInstanceOf(ToolOutput::class, $result);
                 $this->assertTrue($result->isError());
@@ -246,11 +244,6 @@ class DatabaseSkillToolkitTest extends TestCase
     private function createSkillsTable(PDO $pdo): void
     {
         $pdo->exec('CREATE TABLE skills (skill_identifier TEXT, path TEXT, content TEXT, UNIQUE(skill_identifier, path))');
-    }
-
-    private function resourceResult(string $path, string $content): string
-    {
-        return json_encode(['resources' => [['path' => $path, 'content' => $content]]], JSON_THROW_ON_ERROR);
     }
 
     private function hasResult(RequestRecord $record, string $expected): bool

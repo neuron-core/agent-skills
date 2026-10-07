@@ -7,7 +7,7 @@ status: accepted
 Generic skill instructions refer to other skills by name, so the implemented
 tool interface selects declared names. The interface uses
 `skill(name)` to return the complete skill document,
-`skill_resources(name, paths)` to read resources, and
+`skill_resource(name, path)` to read one resource, and
 `skill_script_prepare(name)` to return a prepared script directory for the
 complete skill.
 The agent-facing catalog contains names and descriptions; location and storage
@@ -22,9 +22,9 @@ tool operation, and temporary-file lifecycle belongs to the application or
 environment. This makes the agent's procedure independent of storage without
 making ordinary skill loading write files.
 
-A batch resource read fails as a whole when one requested resource is missing,
-identifying the missing path. A successful response contains all requested
-resources.
+Resource reads return the complete contents of one file as text. Missing or
+invalid paths return an explicit error. The single-file reading contract and
+operational guidelines are explained in [ADR-0002](0002-single-resource-reading.md).
 
 Preparation includes every resource belonging to the selected skill, preserving
 relative paths and bytes. This removes dependency selection from the agent.

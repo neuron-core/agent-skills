@@ -79,17 +79,18 @@ echo $response->getMessage()->getContent();
 The agent initially sees one selected entry per declared name, containing only
 the name and description. When a skill is relevant to the task, it uses `skill`
 to load its instructions. If those
-instructions reference supporting files, it can read them with `skill_resources`.
+instructions reference supporting files, it can read them with `skill_resource`.
 Pass the declared skill name in `name` to `skill`. When names repeat, the first
 configured storage with a valid document wins; discovery order within that
-storage breaks ties. Pass the same declared name in `name` to `skill_resources`,
-with a non-empty `paths` list of literal paths relative to the skill root, even when found in a
-supporting document. For example, `references/my guide.md` selects that file;
+storage breaks ties. Pass the same declared name in `name` to `skill_resource`,
+with one literal `path` relative to the skill root. The result is the complete
+file content as text, without a JSON wrapper, preserving Unicode and line endings.
+For example, `references/my guide.md` selects that file;
 `references/my%20guide.md` selects a file whose name contains `%20`.
-Do not compose full resource URIs. A successful resource result contains
-`resources`, a list of `{path, content}` entries. If any path is unavailable or
-invalid, the whole request returns an error identifying that path, without a
-partial collection or fallback to another same-name skill.
+Read a referenced file before following further required references named in
+its contents. Copy those paths exactly; do not invent files or compose full URIs.
+An unavailable or invalid path returns an error without falling back to another
+same-name skill. Empty file content is valid.
 This keeps the initial context small while making the full skill available when
 needed.
 
@@ -99,16 +100,23 @@ filesystem-only, database-only or mixed. An empty usable catalog registers none:
 | Tool | Purpose |
 | --- | --- |
 | `skill` | Load the complete `SKILL.md` by its declared `name`. |
-| `skill_resources` | Read a non-empty list of `paths` from the skill selected by declared `name`. Return each path with its content. |
+| `skill_resource` | Read one literal `path` from the skill selected by declared `name`; return its full contents as text. |
 | `skill_script_prepare` | Prepare every resource of the skill selected by `name`; return `directory` and relative `files`. |
 
 Skills can also include scripts. Register a separate execution tool, such as
 Neuron's `BashTool`, alongside the toolkit. For every storage source, the agent
 loads the complete document with `skill(name)`, reads necessary references with
-`skill_resources(name, paths)` and calls `skill_script_prepare(name)` before
+`skill_resource(name, path)` and calls `skill_script_prepare(name)` before
 executing scripts from the returned directory. It does not interpret skill URIs
 or choose a preparation procedure by storage type. Ordinary document loading
 and reference reading do not prepare files.
+
+When a loaded document says to call another skill, the agent must call `skill`
+with that declared name and read its document before continuing or asking
+clarification questions. Describing a delegation does not load its instructions.
+An explicit user invocation remains valid when the document includes
+`disable-model-invocation: true`. Required supporting files are read in dependency
+order through `skill_resource`, even when their storage is non-local.
 
 Preparation returns the original native directory for filesystem skills. For
 other sources it copies every enumerated resource, including `SKILL.md`, scripts,
@@ -314,7 +322,7 @@ declared document name. An empty identifier causes discovery to fail with a
 `db://team/team%20caveman`. Identifier `literal%20name` becomes
 `db://team/literal%2520name`, and `café` becomes `db://team/caf%C3%A9`.
 Pass the declared name to the tools and `references/guide.md` as a literal
-relative path to `skill_resources`. Direct repository access uses canonical
+relative path to `skill_resource`. Direct repository access uses canonical
 locations. Database `path` values remain literal names:
 `references/my%20guide.md` in a call selects that exact stored key.
 Confined dot and parent segments work; absolute paths and paths escaping the
@@ -381,9 +389,18 @@ composer check
 Development requires PDO and `pdo_sqlite` for the real in-memory SQLite tests.
 CI covers PHP 8.1–8.5, multiple Neuron AI versions and Symfony YAML compatibility.
 
+## Tool interface migration
+
+`skill_resource(name, path)` replaces `skill_resources(name, paths)` and
+`SkillResourceTool` replaces `SkillResourcesTool`. Update tool registrations,
+scripted calls and result handling: issue one call per file and consume the
+returned text directly instead of decoding a resources collection. The old tool
+and class are removed without compatibility aliases. The `skill` and
+`skill_script_prepare` inputs remain unchanged.
+
 ## Resource path migration
 
-`Skill::readResource()` and `skill_resources` accept literal paths. Pass
+`Skill::readResource()` and `skill_resource` accept literal paths. Pass
 `my guide.md` for a filename with a space, or `notes%20.md` for a filename
 containing those exact characters.
 If a caller previously passed URI-encoded resource paths, it must now pass the

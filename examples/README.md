@@ -51,12 +51,13 @@ php examples/filesystem.php
 Ask: **“Usa php-check e spiegami i risultati.”**
 
 The trace should show `skill` with name `php-check`,
-`skill_resources` with name `php-check` and paths `["references/checks.md"]`, `skill_script_prepare` with name `php-check`, then `bash` executing
+`skill_resource` with name `php-check` and path `references/checks.md`, `skill_script_prepare` with name `php-check`, then `bash` executing
 `php scripts/check.php` from the skill directory. The script reports
 `PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and `PROC_OPEN`.
 
-All three tools are registered for the filesystem demo. `skill` and
-`skill_resources` only read; `skill_script_prepare(name)` returns the original
+All three tools are registered for the filesystem demo. `skill_resource(name, path)`
+reads one supporting file and returns its full contents as text. `skill` and
+`skill_resource` only read; `skill_script_prepare(name)` returns the original
 native directory and all available relative resource paths. The separate
 execution tool runs from that returned directory. No URI decoding or temporary
 copy is required from the agent.
@@ -108,7 +109,7 @@ installed. Prepared directories remain in `sys_get_temp_dir()` after the CLI
 session ends; cleanup, including partial copies after errors, belongs to the
 application or environment.
 
-Inspect the trace for `skill`, `skill_resources` with name `text-stats` reading `["config/statistics.json"]`,
+Inspect the trace for `skill`, `skill_resource` with name `text-stats` reading path `config/statistics.json`,
 `skill_script_prepare` with name `text-stats` preparing all four resources, then `bash` executing
 the two scripts in order from the returned directory, passing the first
 script's JSON to the second.
@@ -131,6 +132,11 @@ The example configures four independent storages:
 - `skills.sqlite`: `dante`, at `db://skills/dante`.
 - `text-stats.sqlite`: `text-stats`, at `db://text-stats/text-stats`.
 
+Try **“usa la skill grill-me”** after registering a storage containing it.
+The trace must load `skill` with name `grill-me`, then `skill` with name `grilling`
+before interview questions. Read any further references one file per call,
+copying paths from the actual loaded contents. The skill documents stay generic.
+
 The agent-facing catalog contains only selected names and descriptions. When
 names repeat, the first configured storage with a valid document wins for all
 three tools; internal repository locations remain available to the application.
@@ -139,11 +145,11 @@ Try these prompts in the same conversation:
 
 1. **“Usa php-check e spiegami i risultati.”**
 2. **“Usa caveman per spiegare l'universo.”**
-3. **“Use dante: write a tercet about a traveller crossing a forest.”**
+3. **“Use the dante skill: write a tercet about a traveller crossing a forest.”**
 4. **“Usa text-stats per analizzare il testo Ciao città.”**
 
-For `dante`, the trace should show `skill_resources` with name `dante` reading
-`["references/terzina.md"]`. The second verse should contain `copper lantern`,
+For `dante`, the trace should show `skill_resource` with name `dante` reading
+path `references/terzina.md`. The second verse should contain `copper lantern`,
 which appears only in that database reference.
 
 ## SQLite setup and local verification
