@@ -108,8 +108,8 @@ class MultipleSkillStoragesTest extends TestCase
                 (new ToolCall($skill->getName(), 'selected'))->setInputs(['name' => 'caveman']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($resource->getName(), 'selected-guide'))->setInputs(['name' => 'caveman', 'paths' => ['references/guide.md']]),
-                (new ToolCall($resource->getName(), 'missing-guide'))->setInputs(['name' => 'caveman', 'paths' => [$databaseFirst ? 'local-only.md' : 'database-only.md']]),
+                (new ToolCall($resource->getName(), 'selected-guide'))->setInputs(['name' => 'caveman', 'path' => 'references/guide.md']),
+                (new ToolCall($resource->getName(), 'missing-guide'))->setInputs(['name' => 'caveman', 'path' => $databaseFirst ? 'local-only.md' : 'database-only.md']),
             ]),
             new AssistantMessage('Both sources checked.'),
         );
@@ -122,7 +122,7 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertStringNotContainsString('location:', $prompt);
         $expectedResults = [
             'selected' => $databaseFirst ? $databaseDocument : $localDocument,
-            'selected-guide' => json_encode(['resources' => [['path' => 'references/guide.md', 'content' => $databaseFirst ? 'Database guide.' : 'Local guide.']]], JSON_THROW_ON_ERROR),
+            'selected-guide' => $databaseFirst ? 'Database guide.' : 'Local guide.',
             'missing-guide' => 'Resource "'.($databaseFirst ? 'local-only.md' : 'database-only.md').'" was not found in skill "'.($databaseFirst ? $databaseLocation : $localLocation).'".',
         ];
         foreach ($expectedResults as $id => $expected) {
@@ -207,8 +207,8 @@ class MultipleSkillStoragesTest extends TestCase
             [$activation, $resource] = $toolkit->tools();
             $activation->setInputs(['name' => '123'])->execute();
             $this->assertSame($projectDocument, $activation->getResult());
-            $resource->setInputs(['name' => '123', 'paths' => ['guide.md']])->execute();
-            $this->assertSame(['resources' => [['path' => 'guide.md', 'content' => "project guide for '123'"]]], json_decode($resource->getResult(), true, flags: JSON_THROW_ON_ERROR));
+            $resource->setInputs(['name' => '123', 'path' => 'guide.md'])->execute();
+            $this->assertSame("project guide for '123'", $resource->getResult());
         }
     }
 
@@ -307,8 +307,8 @@ class MultipleSkillStoragesTest extends TestCase
         [$activation, $resource] = $toolkit->tools();
         $activation->setInputs(['name' => 'shared'])->execute();
         $this->assertStringContainsString('description: First', $activation->getResult());
-        $resource->setInputs(['name' => 'shared', 'paths' => ['guide.md']])->execute();
-        $this->assertSame(['resources' => [['path' => 'guide.md', 'content' => 'a-first/guide.md']]], json_decode($resource->getResult(), true, flags: JSON_THROW_ON_ERROR));
+        $resource->setInputs(['name' => 'shared', 'path' => 'guide.md'])->execute();
+        $this->assertSame('a-first/guide.md', $resource->getResult());
         $this->assertSame(['invalid/SKILL.md', 'shared/SKILL.md', 'unreadable/SKILL.md'], $fallback->reads);
         $primary->documents['a-first'] = "---\nname: shared\ndescription: Changed\n---\nNew body";
         $activation->execute();
@@ -342,8 +342,8 @@ class MultipleSkillStoragesTest extends TestCase
                 (new ToolCall($skill->getName(), 'analysis'))->setInputs(['name' => 'analysis']),
             ]),
             new ToolCallMessage(null, [
-                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['name' => 'writing', 'paths' => ['guide.md']]),
-                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['name' => 'analysis', 'paths' => ['guide.md']]),
+                (new ToolCall($resource->getName(), 'writing-guide'))->setInputs(['name' => 'writing', 'path' => 'guide.md']),
+                (new ToolCall($resource->getName(), 'analysis-guide'))->setInputs(['name' => 'analysis', 'path' => 'guide.md']),
             ]),
             new AssistantMessage('Both skills loaded.'),
         );
