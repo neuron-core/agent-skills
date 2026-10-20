@@ -53,10 +53,10 @@ class SkillStoragePathTest extends TestCase
     public function test_reads_literal_resource_names(string $backend, string $path, string $expected): void
     {
         $storage = $this->storage($backend);
-        $location = $storage->list()[0];
+        $skillIdentifier = $storage->list()[0];
 
-        $this->assertStringEndsWith('/my%20skill', $location);
-        $this->assertSame($expected, $storage->read($location, $path));
+        $this->assertSame('my skill', $skillIdentifier);
+        $this->assertSame($expected, $storage->read($skillIdentifier, $path));
     }
 
     /** @return iterable<string, array{string, string, string}> */
@@ -109,7 +109,7 @@ class SkillStoragePathTest extends TestCase
     {
         return $backend === 'filesystem'
             ? new FileSystemSkillStorage($this->root)
-            : new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
+            : new DatabaseSkillStorage($this->pdo);
     }
 
 }

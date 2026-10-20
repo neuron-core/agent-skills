@@ -7,6 +7,7 @@ namespace NeuronAI\AgentSkills\Tests;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
+use NeuronAI\AgentSkills\Storage\LocalSkillStorageInterface;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 use PDO;
 use PHPUnit\Framework\TestCase;
@@ -54,6 +55,94 @@ class SkillScriptPrepareToolTest extends TestCase
         self::assertSame("\0\xff", file_get_contents($directory.'/assets/data.bin'));
     }
 
+    public function test_custom_local_storage_uses_its_directory_without_copying_resource_contents(): void
+    {
+        $directory = $this->root.'/native %20 café';
+        mkdir($directory);
+        $document = "---\nname: declared\ndescription: Custom local skill\n---\nInstructions.";
+        file_put_contents($directory.'/SKILL.md', $document);
+        file_put_contents($directory.'/asset.bin', "\0\xff");
+        $storage = new class ($directory, $document) implements LocalSkillStorageInterface {
+            /** @var list<array{string, string}> */
+            public array $reads = [];
+
+            /** @var list<string> */
+            public array $directoryRequests = [];
+
+            public function __construct(private string $directory, private string $document)
+            {
+            }
+
+            public function list(): array
+            {
+                return ['local-id'];
+            }
+
+            public function resources(string $skillIdentifier): array
+            {
+                return ['SKILL.md', 'asset.bin'];
+            }
+
+            public function directory(string $skillIdentifier): string
+            {
+                $this->directoryRequests[] = $skillIdentifier;
+
+                return $this->directory;
+            }
+
+            public function read(string $skillIdentifier, string $path): string
+            {
+                $this->reads[] = [$skillIdentifier, $path];
+                if ($path !== 'SKILL.md') {
+                    throw new \LogicException('Local assets must not be copied.');
+                }
+
+                return $this->document;
+            }
+        };
+        $tool = (new SkillToolkit(new SkillRepository($storage)))->tools()[2];
+        self::assertSame([
+            'directory' => $directory, 'files' => ['SKILL.md', 'asset.bin'],
+        ], $tool('declared'));
+        self::assertSame(['local-id'], $storage->directoryRequests);
+        self::assertSame([['local-id', 'SKILL.md']], $storage->reads);
+        self::assertSame("\0\xff", file_get_contents($directory.'/asset.bin'));
+    }
+
+    /** @dataProvider invalidLocalDirectories */
+    public function test_invalid_local_directory_returns_an_error_without_materialization(string $directory): void
+    {
+        $storage = new class ([
+            ['skill_identifier' => 'local-id', 'path' => 'SKILL.md', 'content' => "---\nname: declared\ndescription: Local skill\n---\nInstructions."],
+        ], $directory) extends TableSkillStorage implements LocalSkillStorageInterface {
+            /** @param list<array{skill_identifier: string, path: string, content: string}> $rows */
+            public function __construct(array $rows, private string $directory)
+            {
+                parent::__construct($rows);
+            }
+
+            public function directory(string $skillIdentifier): string
+            {
+                return $this->directory;
+            }
+        };
+        $tool = (new SkillToolkit(new SkillRepository($storage)))->tools()[2];
+        $result = $tool('declared');
+        self::assertInstanceOf(ToolOutput::class, $result);
+        self::assertTrue($result->isError());
+        self::assertSame('The local skill directory is invalid or unavailable.', $result->getText());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidLocalDirectories(): array
+    {
+        return [
+            'relative directory' => ['relative/skill'],
+            'URI instead of native directory' => ['file:///tmp/skill'],
+            'missing directory' => [sys_get_temp_dir().'/missing-skill-'.bin2hex(random_bytes(16))],
+        ];
+    }
+
     public function test_preparation_schema_exposes_local_and_database_names(): void
     {
         mkdir($this->root.'/identifier');
@@ -79,7 +168,7 @@ class SkillScriptPrepareToolTest extends TestCase
         $other = $this->databaseStorage([
             'SKILL.md' => "---\nname: declared\ndescription: Other source\n---\nOther instructions.",
             'other.txt' => 'Must not appear',
-        ], 'db://other/');
+        ]);
         $tool = (new SkillToolkit(new SkillRepository($storage, $other)))->tools()[2];
         self::assertSame(['declared'], $tool->getInputSchema()['properties']['name']['enum']);
         $tool->setInputs(['name' => 'declared'])->execute();
@@ -104,15 +193,15 @@ class SkillScriptPrepareToolTest extends TestCase
     public function test_missing_selected_resource_does_not_fall_back_to_another_source(): void
     {
         $document = "---\nname: declared\ndescription: First source\n---\nInstructions.";
-        $storage = new class ('db://first/', [
+        $storage = new class ([
             ['skill_identifier' => 'identifier', 'path' => 'SKILL.md', 'content' => $document],
         ]) extends TableSkillStorage {
-            public function resources(string $location): array
+            public function resources(string $skillIdentifier): array
             {
                 return ['SKILL.md', 'missing.txt'];
             }
         };
-        $other = $this->databaseStorage(['SKILL.md' => $document, 'missing.txt' => 'Other source'], 'db://other/');
+        $other = $this->databaseStorage(['SKILL.md' => $document, 'missing.txt' => 'Other source']);
         $tool = (new SkillToolkit(new SkillRepository($storage, $other)))->tools()[2];
         $result = $tool('declared');
         self::assertInstanceOf(ToolOutput::class, $result);
@@ -195,7 +284,7 @@ class SkillScriptPrepareToolTest extends TestCase
     }
 
     /** @param array<string, string> $files */
-    private function databaseStorage(array $files, string $baseUri = 'db://first/'): DatabaseSkillStorage
+    private function databaseStorage(array $files): DatabaseSkillStorage
     {
         $pdo = new PDO('sqlite::memory:');
         $pdo->exec('CREATE TABLE skills (skill_identifier TEXT, path TEXT, content BLOB, UNIQUE(skill_identifier, path))');
@@ -204,7 +293,7 @@ class SkillScriptPrepareToolTest extends TestCase
             $insert->execute(['identifier', $path, $content]);
         }
 
-        return new DatabaseSkillStorage($pdo, baseUri: $baseUri);
+        return new DatabaseSkillStorage($pdo);
     }
 
     private function removeDirectory(string $directory): void

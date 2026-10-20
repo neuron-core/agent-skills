@@ -8,7 +8,6 @@ use RuntimeException;
 use Throwable;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 
-use function array_key_exists;
 use function array_filter;
 use function array_map;
 use function array_values;
@@ -21,19 +20,16 @@ class SkillRepository
 {
     protected const MANIFEST = 'SKILL.md';
 
-    /** @var array<string, Skill> */
+    /** @var list<Skill> */
     protected array $catalog = [];
 
-    /** @var list<array{skillLocation: string, message: string}> */
+    /** @var list<array{storage: SkillStorageInterface, skillIdentifier: string, message: string}> */
     protected array $diagnostics = [];
-
-    /** @var array<string, true> */
-    private array $discoveredLocations = [];
 
     /** @var array<int, SkillStorageInterface> */
     private array $pendingStorages = [];
 
-    /** @return list<array{skillLocation: string, message: string}> */
+    /** @return list<array{storage: SkillStorageInterface, skillIdentifier: string, message: string}> */
     public function diagnostics(): array
     {
         $this->resolveCatalog();
@@ -66,18 +62,6 @@ class SkillRepository
     }
 
     /** @throws RuntimeException */
-    public function get(string $location): Skill
-    {
-        $catalog = $this->resolveCatalog();
-
-        if (!array_key_exists($location, $catalog)) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
-        }
-
-        return $catalog[$location];
-    }
-
-    /** @throws RuntimeException */
     public function getByName(string $name): Skill
     {
         $matches = $this->findByName($name);
@@ -98,20 +82,18 @@ class SkillRepository
         ));
     }
 
-    /** @return array<string, Skill> */
+    /** @return list<Skill> */
     private function resolveCatalog(): array
     {
         foreach ($this->pendingStorages as $index => $storage) {
             $catalog = $this->catalog;
             $diagnostics = $this->diagnostics;
-            $locations = $this->discoveredLocations;
 
             try {
                 $this->buildCatalog($storage);
             } catch (Throwable $exception) {
                 $this->catalog = $catalog;
                 $this->diagnostics = $diagnostics;
-                $this->discoveredLocations = $locations;
                 throw $exception;
             }
 
@@ -123,28 +105,29 @@ class SkillRepository
 
     protected function buildCatalog(SkillStorageInterface $storage): void
     {
-        $skillLocations = $storage->list();
-        sort($skillLocations, SORT_STRING);
+        $skillIdentifiers = $storage->list();
+        sort($skillIdentifiers, SORT_STRING);
 
-        foreach ($skillLocations as $skillLocation) {
-            if (array_key_exists($skillLocation, $this->discoveredLocations)) {
-                throw new RuntimeException(sprintf('Duplicate skill location "%s".', $skillLocation));
+        $seen = [];
+        foreach ($skillIdentifiers as $skillIdentifier) {
+            if (isset($seen[$skillIdentifier])) {
+                throw new RuntimeException(sprintf('Duplicate skill identifier "%s" within one storage.', $skillIdentifier));
             }
 
-            $this->discoveredLocations[$skillLocation] = true;
+            $seen[$skillIdentifier] = true;
         }
 
-        foreach ($skillLocations as $skillLocation) {
+        foreach ($skillIdentifiers as $skillIdentifier) {
             try {
-                $contents = $storage->read($skillLocation, self::MANIFEST);
+                $contents = $storage->read($skillIdentifier, self::MANIFEST);
             } catch (RuntimeException $exception) {
-                $this->diagnostics[] = ['skillLocation' => $skillLocation, 'message' => $exception->getMessage()];
+                $this->diagnostics[] = ['storage' => $storage, 'skillIdentifier' => $skillIdentifier, 'message' => $exception->getMessage()];
                 continue;
             }
 
             $parsed = (new SkillDocumentParser())->parse($contents);
             foreach ($parsed['warnings'] as $message) {
-                $this->diagnostics[] = ['skillLocation' => $skillLocation, 'message' => $message];
+                $this->diagnostics[] = ['storage' => $storage, 'skillIdentifier' => $skillIdentifier, 'message' => $message];
             }
 
             $document = $parsed['document'];
@@ -152,10 +135,10 @@ class SkillRepository
                 continue;
             }
 
-            $this->catalog[$skillLocation] = new Skill(
+            $this->catalog[] = new Skill(
                 $document['name'],
                 $document['description'],
-                $skillLocation,
+                $skillIdentifier,
                 $storage
             );
         }

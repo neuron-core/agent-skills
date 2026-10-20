@@ -38,9 +38,12 @@ class SkillToolkit extends AbstractToolkit
         }
 
         return <<<'GUIDELINES'
-            Load requested or relevant skills with `skill` and execute their instructions.
-            "Call the Skill tool with X" means your next action is `skill(name=X)`.
-            Load every skill named by these instructions before replying or asking questions.
+            Use skills explicitly requested by the user or relevant to the task.
+            Call `skill` with the skill's name to load its complete instructions
+            before performing the task.
+
+            Follow the loaded instructions, including any required calls to other
+            skills. Load those skills before performing the steps that depend on them.
 
             Read required files with `skill_resource`, copying literal paths from loaded
             instructions or references. Read each file before selecting its next reference.

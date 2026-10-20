@@ -25,22 +25,22 @@ class DatabaseSkillStorageTest extends TestCase
         $this->pdo->exec("INSERT INTO skills VALUES ('other', 'secret.md', 'Other')");
         $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute(['writing', 'assets/città %20.bin', "\0\xff"]);
         $this->pdo->exec('ALTER TABLE skills RENAME TO team_skills');
-        $storage = new DatabaseSkillStorage($this->pdo, table: 'team_skills', baseUri: 'db://team/');
+        $storage = new DatabaseSkillStorage($this->pdo, table: 'team_skills');
 
-        $this->assertSame(['SKILL.md', 'assets/città %20.bin', 'references/guide.md'], $storage->resources('db://team/writing'));
+        $this->assertSame(['SKILL.md', 'assets/città %20.bin', 'references/guide.md'], $storage->resources('writing'));
     }
 
     public function test_resource_enumeration_rejects_unknown_skills(): void
     {
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('is not available');
-        (new DatabaseSkillStorage($this->pdo))->resources('db://skills/unknown');
+        (new DatabaseSkillStorage($this->pdo))->resources('unknown');
     }
 
-    public function test_resource_enumeration_rejects_other_storage_locations(): void
+    public function test_resource_enumeration_rejects_uri_identifiers(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('is not available');
+        $this->expectExceptionMessage('single path segments');
         (new DatabaseSkillStorage($this->pdo))->resources('db://other/writing');
     }
 
@@ -49,50 +49,30 @@ class DatabaseSkillStorageTest extends TestCase
     {
         $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)')->execute(['writing', $path, 'Invalid']);
         $this->expectException(RuntimeException::class);
-        (new DatabaseSkillStorage($this->pdo))->resources('db://skills/writing');
+        (new DatabaseSkillStorage($this->pdo))->resources('writing');
     }
 
     public function test_resource_enumeration_reports_database_failures(): void
     {
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('could not be read');
-        (new DatabaseSkillStorage($this->pdo, table: 'missing'))->resources('db://skills/writing');
+        (new DatabaseSkillStorage($this->pdo, table: 'missing'))->resources('writing');
     }
 
-    public function test_default_base_uri_addresses_skills(): void
+    public function test_lists_and_reads_storage_identifiers(): void
     {
         $storage = new DatabaseSkillStorage($this->pdo);
 
-        $this->assertSame(['db://skills/writing'], $storage->list());
-        $this->assertSame('Document', $storage->read('db://skills/writing', 'SKILL.md'));
+        $this->assertSame(['writing'], $storage->list());
+        $this->assertSame('Document', $storage->read('writing', 'SKILL.md'));
     }
 
     public function test_configured_table_uses_supplied_connection(): void
     {
         $this->pdo->exec('ALTER TABLE skills RENAME TO team_skills');
-        $storage = new DatabaseSkillStorage($this->pdo, table: 'team_skills', baseUri: 'db://team/project/');
-        $this->assertSame(['db://team/project/writing'], $storage->list());
-        $this->assertSame('Guide', $storage->read('db://team/project/writing', 'references/guide.md'));
-    }
-
-    /** @dataProvider baseUris */
-    public function test_base_uri_accepts_an_optional_trailing_slash(string $baseUri, string $location): void
-    {
-        $storage = new DatabaseSkillStorage($this->pdo, baseUri: $baseUri);
-
-        $this->assertSame([$location], $storage->list());
-        $this->assertSame('Guide', $storage->read($location, 'references/guide.md'));
-    }
-
-    /** @return array<string, array{string, string}> */
-    public static function baseUris(): array
-    {
-        return [
-            'label without slash' => ['db://team', 'db://team/writing'],
-            'label with slash' => ['db://team/', 'db://team/writing'],
-            'nested without slash' => ['db://team/project', 'db://team/project/writing'],
-            'nested with slash' => ['db://team/project/', 'db://team/project/writing'],
-        ];
+        $storage = new DatabaseSkillStorage($this->pdo, table: 'team_skills');
+        $this->assertSame(['writing'], $storage->list());
+        $this->assertSame('Guide', $storage->read('writing', 'references/guide.md'));
     }
 
     /** @dataProvider identifiersWithSpecialCharacters */
@@ -102,12 +82,12 @@ class DatabaseSkillStorageTest extends TestCase
         $insert->execute([$identifier, 'SKILL.md', 'Found the skill.']);
         $insert->execute([$identifier, 'references/my #?% guide.md', 'Found the resource.']);
 
-        $storage = new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
-        $location = 'db://team/'.rawurlencode($identifier);
+        $storage = new DatabaseSkillStorage($this->pdo);
+        $skillIdentifier = $identifier;
 
-        $this->assertContains($location, $storage->list());
-        $this->assertSame('Found the skill.', $storage->read($location, 'SKILL.md'));
-        $this->assertSame('Found the resource.', $storage->read($location, 'references/my #?% guide.md'));
+        $this->assertContains($skillIdentifier, $storage->list());
+        $this->assertSame('Found the skill.', $storage->read($skillIdentifier, 'SKILL.md'));
+        $this->assertSame('Found the resource.', $storage->read($skillIdentifier, 'references/my #?% guide.md'));
     }
 
     /** @return array<string, array{string}> */
@@ -128,19 +108,19 @@ class DatabaseSkillStorageTest extends TestCase
         $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', $path, 'Found the resource.']);
 
-        $storage = new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
+        $storage = new DatabaseSkillStorage($this->pdo);
 
-        $this->assertSame('Found the resource.', $storage->read('db://team/writing', $path));
+        $this->assertSame('Found the resource.', $storage->read('writing', $path));
     }
 
     /** @dataProvider databaseOperations */
     public function test_missing_tables_fail_clearly_without_creating_them(bool $read): void
     {
-        $storage = new DatabaseSkillStorage($this->pdo, table: 'missing', baseUri: 'db://team/');
+        $storage = new DatabaseSkillStorage($this->pdo, table: 'missing');
         // Repeating the public operation must still fail: no implicit schema provisioning.
         for ($attempt = 0; $attempt < 2; ++$attempt) {
             try {
-                $read ? $storage->read('db://team/writing', 'SKILL.md') : $storage->list();
+                $read ? $storage->read('writing', 'SKILL.md') : $storage->list();
                 $this->fail('A missing table must fail.');
             } catch (RuntimeException $exception) {
                 $this->assertStringContainsString('Database skill table "missing" could not be read', $exception->getMessage());
@@ -165,7 +145,7 @@ class DatabaseSkillStorageTest extends TestCase
 
         $this->assertSame(
             $content,
-            (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read('db://team/writing', 'asset.bin'),
+            (new DatabaseSkillStorage($this->pdo))->read('writing', 'asset.bin'),
         );
     }
 
@@ -178,7 +158,15 @@ class DatabaseSkillStorageTest extends TestCase
     public function test_empty_text_is_readable(): void
     {
         $this->pdo->exec("INSERT INTO skills VALUES ('writing', 'empty.md', '')");
-        $this->assertSame('', (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read('db://team/writing', 'empty.md'));
+        $this->assertSame('', (new DatabaseSkillStorage($this->pdo))->read('writing', 'empty.md'));
+    }
+
+    public function test_numeric_identifiers_remain_literal_strings(): void
+    {
+        $this->pdo->exec("INSERT INTO skills VALUES ('123', 'SKILL.md', 'Numeric document')");
+        $storage = new DatabaseSkillStorage($this->pdo);
+        $this->assertContains('123', $storage->list());
+        $this->assertSame('Numeric document', $storage->read('123', 'SKILL.md'));
     }
 
     public function test_empty_identifiers_fail_discovery_clearly(): void
@@ -187,14 +175,14 @@ class DatabaseSkillStorageTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Skill identifiers must be non-empty strings.');
-        (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->list();
+        (new DatabaseSkillStorage($this->pdo))->list();
     }
 
     /** @dataProvider relativePaths */
     public function test_relative_paths_stay_within_selected_skill(string $path): void
     {
-        $storage = new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/');
-        $this->assertSame('Guide', $storage->read('db://team/writing', $path));
+        $storage = new DatabaseSkillStorage($this->pdo);
+        $this->assertSame('Guide', $storage->read('writing', $path));
     }
 
     /** @return array<string, array{string}> */
@@ -213,7 +201,7 @@ class DatabaseSkillStorageTest extends TestCase
         $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
         $insert->execute(['writing', $path, 'Must not be selected']);
         $this->expectException(RuntimeException::class);
-        (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read('db://team/writing', $path);
+        (new DatabaseSkillStorage($this->pdo))->read('writing', $path);
     }
 
     /** @return array<string, array{string}> */
@@ -227,50 +215,39 @@ class DatabaseSkillStorageTest extends TestCase
         ];
     }
 
-    /** @dataProvider unknownLocations */
-    public function test_rejects_unknown_or_noncanonical_locations(string $location): void
+    /** @dataProvider unknownIdentifiers */
+    public function test_rejects_unknown_or_invalid_identifiers(string $skillIdentifier): void
     {
         $this->expectException(RuntimeException::class);
-        (new DatabaseSkillStorage($this->pdo, baseUri: 'db://team/'))->read($location, 'SKILL.md');
+        (new DatabaseSkillStorage($this->pdo))->read($skillIdentifier, 'SKILL.md');
     }
 
     /** @return array<string, array{string}> */
-    public static function unknownLocations(): array
+    public static function unknownIdentifiers(): array
     {
         return [
             'another base URI' => ['db://else/writing'],
-            'missing skill' => ['db://team/missing'],
-            'encoded alias' => ['db://team/%77riting'],
-            'trailing slash' => ['db://team/writing/'],
-            'encoded separator' => ['db://team/writing%2Fextra'],
+            'missing skill' => ['missing'],
+            'encoded alias' => ['%77riting'],
+            'trailing slash' => ['writing/'],
+            'encoded separator' => ['writing%2Fextra'],
         ];
     }
 
-    /** @dataProvider invalidConfiguration */
-    public function test_invalid_configuration_fails(string $baseUri, string $table): void
+    /** @dataProvider invalidTables */
+    public function test_invalid_table_configuration_fails(string $table): void
     {
         $this->expectException(RuntimeException::class);
-        new DatabaseSkillStorage($this->pdo, table: $table, baseUri: $baseUri);
+        new DatabaseSkillStorage($this->pdo, table: $table);
     }
 
-    /** @return array<string, array{string, string}> */
-    public static function invalidConfiguration(): array
+    /** @return array<string, array{string}> */
+    public static function invalidTables(): array
     {
         return [
-            'wrong scheme' => ['file:///skills/', 'skills'],
-            'missing label' => ['db:///', 'skills'],
-            'repeated trailing slash' => ['db://team//', 'skills'],
-            'empty nested segment' => ['db://team//project', 'skills'],
-            'credentials' => ['db://user:pass@team/', 'skills'],
-            'query' => ['db://team/?tenant=1', 'skills'],
-            'fragment' => ['db://team/#part', 'skills'],
-            'space in base URI' => ['db://team skills/', 'skills'],
-            'encoded space in base URI' => ['db://team%20skills/', 'skills'],
-            'unicode in base URI' => ['db://café/', 'skills'],
-            'dot segment' => ['db://team/../', 'skills'],
-            'empty table' => ['db://team/', ''],
-            'qualified table' => ['db://team/', 'main.skills'],
-            'sql in table' => ['db://team/', 'skills; DROP TABLE skills'],
+            'empty table' => [''],
+            'qualified table' => ['main.skills'],
+            'sql in table' => ['skills; DROP TABLE skills'],
         ];
     }
 }
