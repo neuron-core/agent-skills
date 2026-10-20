@@ -6,7 +6,7 @@ namespace NeuronAI\AgentSkills\Tests\Fixtures;
 
 use InvalidArgumentException;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
-use NeuronAI\AgentSkills\ResourceLocator;
+use NeuronAI\AgentSkills\StoragePaths;
 use RuntimeException;
 
 /** In-memory equivalent of UNIQUE(skill_identifier, path) in a single resource table. */
@@ -14,44 +14,43 @@ class TableSkillStorage implements SkillStorageInterface
 {
     /** @var array<string, array<string, string>> */
     private array $resources = [];
-    private ResourceLocator $resourceLocator;
+    private StoragePaths $storagePaths;
 
     /** @param list<array{skill_identifier: string, path: string, content: string}> $rows */
-    public function __construct(string $baseUri, array $rows)
+    public function __construct(array $rows)
     {
-        if (preg_match('~^db://[a-z0-9-]+/(?:[a-z0-9-]+/)*$~D', $baseUri) !== 1) {
-            throw new InvalidArgumentException('Expected a complete db:// base URI ending in a slash.');
-        }
-        $this->resourceLocator = new ResourceLocator($baseUri);
+        $this->storagePaths = new StoragePaths();
         foreach ($rows as $row) {
-            $location = $this->resourceLocator->fromSkillIdentifier($row['skill_identifier']);
-            if (isset($this->resources[$location][$row['path']])) {
+            $skillIdentifier = $row['skill_identifier'];
+            $this->storagePaths->validateIdentifier($skillIdentifier);
+            if (isset($this->resources[$skillIdentifier][$row['path']])) {
                 throw new InvalidArgumentException('Duplicate skill_identifier and path.');
             }
-            $this->resources[$location][$row['path']] = $row['content'];
+            $this->resources[$skillIdentifier][$row['path']] = $row['content'];
         }
     }
 
     public function list(): array
     {
-        return array_keys($this->resources);
+        return array_map(strval(...), array_keys($this->resources));
     }
 
-    public function resources(string $location): array
+    public function resources(string $skillIdentifier): array
     {
-        $this->resourceLocator->resolve($location, 'SKILL.md');
-        $paths = array_keys($this->resources[$location]
-            ?? throw new RuntimeException(sprintf('Skill "%s" is not available.', $location)));
+        $this->storagePaths->validateIdentifier($skillIdentifier);
+        $paths = array_keys($this->resources[$skillIdentifier]
+            ?? throw new RuntimeException(sprintf('Skill "%s" is not available.', $skillIdentifier)));
         sort($paths, SORT_STRING);
 
         return $paths;
     }
 
-    public function read(string $location, string $path): string
+    public function read(string $skillIdentifier, string $path): string
     {
-        $resource = $this->resourceLocator->resolve($location, $path);
+        $this->storagePaths->validateIdentifier($skillIdentifier);
+        $path = $this->storagePaths->normalizePath($path);
 
-        return $this->resources[$location][$resource->path]
-            ?? throw new RuntimeException(sprintf('Database resource "%s" is unavailable in "%s".', $resource->path, $location));
+        return $this->resources[$skillIdentifier][$path]
+            ?? throw new RuntimeException(sprintf('Database resource "%s" is unavailable in "%s".', $path, $skillIdentifier));
     }
 }

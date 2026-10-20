@@ -6,42 +6,23 @@ namespace NeuronAI\AgentSkills;
 
 use RuntimeException;
 
-/** Locate skill resources under one base URI. */
-final class ResourceLocator
+/** Validate storage identifiers and literal resource paths without URI conversion. */
+final class StoragePaths
 {
-    public function __construct(private string $baseUri)
+    /** @throws RuntimeException */
+    public function validateIdentifier(string $skillIdentifier): void
     {
-    }
-
-    public function fromSkillIdentifier(string $identifier): string
-    {
-        if ($identifier === '') {
+        if ($skillIdentifier === '') {
             throw new RuntimeException('Skill identifiers must be non-empty strings.');
         }
 
-        if (!$this->isSingleSegment($identifier)) {
+        if (!$this->isSingleSegment($skillIdentifier)) {
             throw new RuntimeException('Skill identifiers must be single path segments.');
         }
-
-        return $this->baseUri.rawurlencode($identifier);
     }
 
-    public function resolve(string $location, string $path): ResourceReference
-    {
-        if (str_starts_with($location, $this->baseUri)) {
-            $encodedIdentifier = substr($location, strlen($this->baseUri));
-            $identifier = rawurldecode($encodedIdentifier);
-
-            if ($this->isSingleSegment($identifier)
-                && $this->fromSkillIdentifier($identifier) === $location) {
-                return new ResourceReference($identifier, $this->normalizePath($path));
-            }
-        }
-
-        throw new RuntimeException(sprintf('Skill location "%s" is not available.', $location));
-    }
-
-    private function normalizePath(string $path): string
+    /** @throws RuntimeException */
+    public function normalizePath(string $path): string
     {
         if ($path === '' || str_contains($path, "\0") || str_contains($path, '\\')
             || str_starts_with($path, '/') || preg_match('/^[a-zA-Z][a-zA-Z0-9+.-]*:/', $path) === 1) {

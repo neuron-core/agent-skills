@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Storage;
 
-use NeuronAI\AgentSkills\ResourceLocator;
+use NeuronAI\AgentSkills\StoragePaths;
 
 use PDO;
 use PDOException;
@@ -14,27 +14,22 @@ use RuntimeException;
 /** Read-only storage over application-owned rows identified by (skill_identifier, path). */
 class DatabaseSkillStorage implements SkillStorageInterface
 {
-    private ResourceLocator $resourceLocator;
+    private StoragePaths $storagePaths;
 
     public function __construct(
         private PDO $pdo,
-        private string $table = 'skills',
-        string $baseUri = 'db://skills/'
+        private string $table = 'skills'
     ) {
         if (preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/D', $table) !== 1) {
             throw new RuntimeException('Skill table must be a simple SQL identifier.');
         }
 
-        if (preg_match('~^db://[a-z0-9-]+(?:/[a-z0-9-]+)*/?$~D', $baseUri) !== 1) {
-            throw new RuntimeException('Skill base URI must be a complete db:// URI.');
-        }
-
-        $this->resourceLocator = new ResourceLocator(rtrim($baseUri, '/').'/');
+        $this->storagePaths = new StoragePaths();
     }
 
     public function list(): array
     {
-        $locations = [];
+        $identifiers = [];
 
         try {
             /** @var PDOStatement $statement */
@@ -48,21 +43,22 @@ class DatabaseSkillStorage implements SkillStorageInterface
         }
 
         foreach ($rows as $row) {
-            $location = $this->resourceLocator->fromSkillIdentifier($row['skill_identifier']);
-            $locations[$location] = true;
+            $skillIdentifier = $row['skill_identifier'];
+            $this->storagePaths->validateIdentifier($skillIdentifier);
+            $identifiers[$skillIdentifier] = true;
         }
 
-        return array_keys($locations);
+        return array_map(strval(...), array_keys($identifiers));
     }
 
-    public function resources(string $location): array
+    public function resources(string $skillIdentifier): array
     {
-        $resource = $this->resourceLocator->resolve($location, 'SKILL.md');
+        $this->storagePaths->validateIdentifier($skillIdentifier);
 
         try {
             /** @var PDOStatement $statement */
             $statement = $this->pdo->prepare('SELECT path FROM '.$this->table.' WHERE skill_identifier = ?');
-            $statement->execute([$resource->skillIdentifier]);
+            $statement->execute([$skillIdentifier]);
             $paths = $statement->fetchAll(PDO::FETCH_COLUMN);
         } catch (PDOException $exception) {
             throw new RuntimeException(
@@ -72,11 +68,11 @@ class DatabaseSkillStorage implements SkillStorageInterface
         }
 
         if ($paths === []) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $location));
+            throw new RuntimeException(sprintf('Skill "%s" is not available.', $skillIdentifier));
         }
 
         foreach ($paths as $path) {
-            if ($this->resourceLocator->resolve($location, $path)->path !== $path) {
+            if ($this->storagePaths->normalizePath($path) !== $path) {
                 throw new RuntimeException(sprintf('Resource path "%s" is invalid.', $path));
             }
         }
@@ -86,15 +82,16 @@ class DatabaseSkillStorage implements SkillStorageInterface
         return $paths;
     }
 
-    public function read(string $location, string $path): string
+    public function read(string $skillIdentifier, string $path): string
     {
-        $resource = $this->resourceLocator->resolve($location, $path);
+        $this->storagePaths->validateIdentifier($skillIdentifier);
+        $path = $this->storagePaths->normalizePath($path);
 
         try {
             $sql = 'SELECT content FROM '.$this->table.' WHERE skill_identifier = ? AND path = ?';
             /** @var PDOStatement $statement */
             $statement = $this->pdo->prepare($sql);
-            $statement->execute([$resource->skillIdentifier, $resource->path]);
+            $statement->execute([$skillIdentifier, $path]);
             $content = $statement->fetchColumn();
         } catch (PDOException $exception) {
             throw new RuntimeException(
@@ -104,7 +101,7 @@ class DatabaseSkillStorage implements SkillStorageInterface
         }
 
         if ($content === false) {
-            throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $resource->path, $location));
+            throw new RuntimeException(sprintf('Resource "%s" was not found in skill "%s".', $path, $skillIdentifier));
         }
 
         return $content;

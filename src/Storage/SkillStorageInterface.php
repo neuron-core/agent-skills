@@ -9,7 +9,7 @@ use RuntimeException;
 interface SkillStorageInterface
 {
     /**
-     * Return complete canonical skill-root locations, without a trailing slash.
+     * Return skill identifiers scoped to this storage, without URI encoding.
      *
      * @return string[]
      */
@@ -21,13 +21,13 @@ interface SkillStorageInterface
      * @return list<string>
      * @throws RuntimeException
      */
-    public function resources(string $location): array;
+    public function resources(string $skillIdentifier): array;
 
     /**
-     * Read file contents as a PHP string using a canonical skill location and a literal relative path.
+     * Read file contents as a PHP string using a storage-specific skill identifier and a literal relative path.
      * Throw RuntimeException for expected failures such as an unknown resource or unreadable file.
      *
      * @throws RuntimeException
      */
-    public function read(string $location, string $path): string;
+    public function read(string $skillIdentifier, string $path): string;
 }

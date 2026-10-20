@@ -17,7 +17,7 @@ final class Skill
     public function __construct(
         private readonly string $name,
         private readonly string $description,
-        private readonly string $location,
+        private readonly string $skillIdentifier,
         private readonly SkillStorageInterface $storage,
     ) {
     }
@@ -32,49 +32,53 @@ final class Skill
         return $this->description;
     }
 
-    public function location(): string
+    public function identifier(): string
     {
-        return $this->location;
+        return $this->skillIdentifier;
+    }
+
+    public function storage(): SkillStorageInterface
+    {
+        return $this->storage;
     }
 
     /** @throws RuntimeException */
-    public function readInstructions(): string
+    public function loadInstructions(): string
     {
-        return trim($this->parseDocument($this->storage->read($this->location, 'SKILL.md'))['body']);
+        return trim($this->parseDocument($this->resource('SKILL.md')->load())['body']);
     }
 
     /** @throws RuntimeException */
-    public function readFrontmatter(): stdClass
+    public function loadFrontmatter(): stdClass
     {
-        return $this->parseDocument($this->storage->read($this->location, 'SKILL.md'))['frontmatter'];
+        return $this->parseDocument($this->resource('SKILL.md')->load())['frontmatter'];
     }
 
     /** @throws RuntimeException */
-    public function readDocument(): string
+    public function loadDocument(): string
     {
-        $contents = $this->storage->read($this->location, 'SKILL.md');
+        $contents = $this->resource('SKILL.md')->load();
         $this->parseDocument($contents);
 
         return $contents;
     }
 
     /**
-     * @return list<string>
+     * @return list<Resource>
      * @throws RuntimeException
      */
     public function resources(): array
     {
-        return $this->storage->resources($this->location);
+        return array_map(
+            fn (string $path): Resource => $this->resource($path),
+            $this->storage->resources($this->skillIdentifier),
+        );
     }
 
-    /**
-     * Read a resource by its literal path relative to this skill, such as references/my guide.md.
-     *
-     * @throws RuntimeException
-     */
-    public function readResource(string $path): string
+    /** Return a resource without reading or checking its existence. */
+    public function resource(string $path): Resource
     {
-        return $this->storage->read($this->location, $path);
+        return new Resource($this->skillIdentifier, $path, $this->storage);
     }
 
     /** @return array{name: string, description: string, body: string, frontmatter: stdClass} */

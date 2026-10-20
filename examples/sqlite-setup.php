@@ -16,11 +16,10 @@ function createDemoDatabase(string $database): PDO
         content TEXT NOT NULL,
         PRIMARY KEY (skill_identifier, path)
     )');
+    $pdo->exec('DELETE FROM skills');
 
     return $pdo;
 }
-
-$pdo = createDemoDatabase($database);
 
 $document = <<<'MARKDOWN'
 ---
@@ -45,16 +44,14 @@ MARKDOWN;
 $textStatsDocument = <<<'MARKDOWN'
 ---
 name: text-stats
-description: Count words, lines and characters in a supplied text. Use when the user asks for text statistics.
+description: Count words, lines and characters when the user requests text statistics.
 ---
 # Text statistics
 
-1. Read `config/statistics.json`: `include_whitespace` controls character counting;
-   `metrics` selects the values to report.
-2. Execute the script `scripts/analyze.py`. Supply the exact text as UTF-8
-   through standard input, preserving whitespace and line endings. Read its JSON output.
-3. Execute the script `scripts/report.py`, supplying the JSON from the first
-   script through standard input. Report the JSON returned by this second script.
+1. Run `scripts/analyze.py`, supplying the exact text through stdin.
+2. Inspect its JSON output and verify the word, line and character counts.
+   Supply that JSON through stdin to `scripts/report.py`.
+3. Report the JSON returned by `report.py` after successful execution.
 MARKDOWN;
 
 $textStatsScript = <<<'PYTHON'
@@ -92,8 +89,8 @@ $textStatsConfig = <<<'JSON'
 }
 JSON;
 
-$insert = $pdo->prepare('INSERT OR REPLACE INTO skills (skill_identifier, path, content) VALUES (?, ?, ?)');
-$pdo->exec("DELETE FROM skills WHERE skill_identifier = 'demo-errors'");
+$pdo = createDemoDatabase($database);
+$insert = $pdo->prepare('INSERT INTO skills (skill_identifier, path, content) VALUES (?, ?, ?)');
 $insert->execute(['dante', 'SKILL.md', $document."\n"]);
 $insert->execute(['dante', 'references/terzina.md', $terzina."\n"]);
 $pdo->commit();
@@ -101,12 +98,11 @@ $pdo->commit();
 echo 'Prepared SQLite skills database: '.$database.PHP_EOL;
 
 $pdo = createDemoDatabase($textStatsDatabase);
-$insert = $pdo->prepare('INSERT OR REPLACE INTO skills (skill_identifier, path, content) VALUES (?, ?, ?)');
+$insert = $pdo->prepare('INSERT INTO skills (skill_identifier, path, content) VALUES (?, ?, ?)');
 $insert->execute(['text-stats', 'SKILL.md', $textStatsDocument."\n"]);
 $insert->execute(['text-stats', 'scripts/analyze.py', $textStatsScript."\n"]);
 $insert->execute(['text-stats', 'scripts/report.py', $textStatsReport."\n"]);
 $insert->execute(['text-stats', 'config/statistics.json', $textStatsConfig."\n"]);
-$pdo->exec("DELETE FROM skills WHERE skill_identifier = 'text-stats' AND path = 'scripts/metrics.py'");
 $pdo->commit();
 
 echo 'Prepared SQLite skills database: '.$textStatsDatabase.PHP_EOL;

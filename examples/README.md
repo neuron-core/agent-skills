@@ -79,8 +79,9 @@ scripts/report.py        Reads the first script's JSON and selects output metric
 config/statistics.json  Settings read independently by both scripts
 ```
 
-Execute `analyze.py` first, then supply its JSON output to `report.py` through
-stdin. Both scripts locate the configuration relative to their own files.
+Analyze the exact input text with `analyze.py`, then inspect its JSON for word,
+line and character counts before supplying that JSON to `report.py`. Both scripts
+locate the configuration relative to their own files.
 `include_whitespace` controls whether the first script counts whitespace in
 `characters`; `metrics` selects the fields returned by the second script.
 The defaults include whitespace and report `words`, `lines` and `characters`.
@@ -109,10 +110,11 @@ installed. Prepared directories remain in `sys_get_temp_dir()` after the CLI
 session ends; cleanup, including partial copies after errors, belongs to the
 application or environment.
 
-Inspect the trace for `skill`, `skill_resource` with name `text-stats` reading path `config/statistics.json`,
-`skill_script_prepare` with name `text-stats` preparing all four resources, then `bash` executing
-the two scripts in order from the returned directory, passing the first
-script's JSON to the second.
+Inspect the trace for `skill`, `skill_script_prepare` with name `text-stats`
+preparing all four resources, then `bash` executing
+the analysis script from the returned directory. The agent should inspect the
+returned counts before supplying that JSON to the reporting script, and report
+its successful result. The skill leaves command construction to the agent.
 The skill specifies required files, UTF-8 standard input and JSON output. The
 application decides how to prepare resources and supply input to its execution
 tool. For this shell-based demo, `printf '%s' 'Ciao città'` preserves text without
@@ -129,8 +131,8 @@ The example configures four independent storages:
 
 - `skills/`: `php-check` on the filesystem.
 - `.agents/skills/`: the installed `caveman` skill on the filesystem.
-- `skills.sqlite`: `dante`, at `db://skills/dante`.
-- `text-stats.sqlite`: `text-stats`, at `db://text-stats/text-stats`.
+- `skills.sqlite`: `dante`, identified by `dante`.
+- `text-stats.sqlite`: `text-stats`, identified by `text-stats`.
 
 Try **“usa la skill grill-me”** after registering a storage containing it.
 The trace must load `skill` with name `grill-me`, then `skill` with name `grilling`
@@ -139,7 +141,7 @@ copying paths from the actual loaded contents. The skill documents stay generic.
 
 The agent-facing catalog contains only selected names and descriptions. When
 names repeat, the first configured storage with a valid document wins for all
-three tools; internal repository locations remain available to the application.
+three tools. The repository retains each skill’s storage and identifier.
 
 Try these prompts in the same conversation:
 
@@ -160,9 +162,11 @@ which appears only in that database reference.
 php examples/sqlite-setup.php /tmp/dante.sqlite /tmp/text-stats.sqlite
 ```
 
-The demos use the default paths under `examples/`. Setup replaces two resources
-for `dante` and four for `text-stats`, and removes old `demo-errors` rows from `skills.sqlite`.
-It also removes the obsolete `text-stats` resource `scripts/metrics.py`.
+The demos use the default paths under `examples/`. Every setup run deletes all
+rows from the `skills` table in each database and inserts the demo data: two
+resources for `dante` and four for `text-stats`. Custom rows and edits in these
+tables are discarded. Each database reset and insertion runs in one transaction;
+the database files and other tables are preserved.
 An older demo database with a `skill_name` column needs that column renamed to
 `skill_identifier`, or must be recreated before running setup.
 
@@ -170,12 +174,11 @@ The application owns schema creation and updates. Each database has a `skills`
 table with non-null `skill_identifier`, `path` and `content` columns, and a
 composite primary key on `(skill_identifier, path)` with binary collation.
 `DatabaseSkillStorage` discovers skills, enumerates their resources and reads resource bytes.
-The setup's DDL and `INSERT OR REPLACE` are SQLite-specific; they are not a
-cross-database migration framework.
+The setup targets SQLite; it is not a cross-database migration framework.
 
-Base URIs identify public locations, not connections or tenant filters. The
-mixed example uses distinct databases and distinct base URIs. Different URIs
-alone would not isolate rows in the same database and table.
+Each storage reads identifiers within its own connection and table. The mixed
+example uses distinct databases; equal identifiers across storages are allowed
+and remain bound to their owning source.
 
 Run the local checks without model credentials or network calls:
 

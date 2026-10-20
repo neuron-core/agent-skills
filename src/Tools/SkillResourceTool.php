@@ -48,7 +48,7 @@ class SkillResourceTool extends Tool
     public function __invoke(string $name, string $path): string|ToolOutput
     {
         try {
-            return $this->repository->getByName($name)->readResource($path);
+            return $this->repository->getByName($name)->resource($path)->load();
         } catch (RuntimeException $exception) {
             return ToolOutput::error($exception->getMessage());
         }

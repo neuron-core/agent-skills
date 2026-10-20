@@ -38,19 +38,43 @@ class DatabaseExampleTest extends TestCase
         $repository = new SkillRepository(new DatabaseSkillStorage(new PDO('sqlite:'.$this->database)));
 
         $this->assertSame(['dante'], $repository->names());
-        $skill = $repository->get('db://skills/dante');
-        $this->assertStringContainsString('references/terzina.md', $skill->readDocument());
-        $this->assertStringNotContainsString('copper lantern', $skill->readDocument());
-        $this->assertStringContainsString('copper lantern', $skill->readResource('references/terzina.md'));
+        $skill = $repository->getByName('dante');
+        $this->assertStringContainsString('references/terzina.md', $skill->loadDocument());
+        $this->assertStringNotContainsString('copper lantern', $skill->loadDocument());
+        $this->assertStringContainsString('copper lantern', $skill->resource('references/terzina.md')->load());
+    }
+
+    public function test_setup_resets_all_skill_rows_in_both_databases(): void
+    {
+        $this->runExample('sqlite-setup.php');
+        $databases = [];
+        $expected = [];
+        foreach ([$this->database, $this->database.'-text-stats'] as $path) {
+            $pdo = new PDO('sqlite:'.$path);
+            $expected[] = $pdo->query('SELECT * FROM skills ORDER BY skill_identifier, path')->fetchAll(PDO::FETCH_ASSOC);
+            $pdo->exec("UPDATE skills SET content = 'Edited'");
+            $pdo->exec("INSERT INTO skills VALUES ('custom', 'SKILL.md', 'Custom skill')");
+            $pdo->exec("INSERT INTO skills VALUES ('text-stats', 'scripts/metrics.py', 'Obsolete script')");
+            $pdo->exec('CREATE TABLE unrelated (content TEXT)');
+            $pdo->exec("INSERT INTO unrelated VALUES ('Keep this')");
+            $databases[] = $pdo;
+        }
+
+        $this->runExample('sqlite-setup.php');
+
+        foreach ($databases as $index => $pdo) {
+            self::assertSame($expected[$index], $pdo->query('SELECT * FROM skills ORDER BY skill_identifier, path')->fetchAll(PDO::FETCH_ASSOC));
+            self::assertSame('Keep this', $pdo->query('SELECT content FROM unrelated')->fetchColumn());
+        }
     }
 
     public function test_database_scripts_and_configuration_work_together_after_preparation(): void
     {
         $this->runExample('sqlite-setup.php');
-        $repository = new SkillRepository(new DatabaseSkillStorage(new PDO('sqlite:'.$this->database.'-text-stats'), baseUri: 'db://text-stats/'));
+        $repository = new SkillRepository(new DatabaseSkillStorage(new PDO('sqlite:'.$this->database.'-text-stats')));
         $this->assertSame(['text-stats'], $repository->names());
-        $skill = $repository->get('db://text-stats/text-stats');
-        $this->assertStringContainsString('scripts/analyze.py', $skill->readDocument());
+        $skill = $repository->getByName('text-stats');
+        $this->assertStringContainsString('scripts/analyze.py', $skill->loadDocument());
 
         $pdo = new PDO('sqlite:'.$this->database.'-text-stats');
         $statement = $pdo->prepare('INSERT INTO skills (skill_identifier, path, content) VALUES (?, ?, ?)');
@@ -65,9 +89,9 @@ class DatabaseExampleTest extends TestCase
         $script = $prepared['directory'].'/scripts/analyze.py';
 
         try {
-            self::assertSame($skill->readResource('scripts/analyze.py'), file_get_contents($script));
-            self::assertSame($skill->readResource('scripts/report.py'), file_get_contents($prepared['directory'].'/scripts/report.py'));
-            self::assertSame($skill->readResource('config/statistics.json'), file_get_contents($prepared['directory'].'/config/statistics.json'));
+            self::assertSame($skill->resource('scripts/analyze.py')->load(), file_get_contents($script));
+            self::assertSame($skill->resource('scripts/report.py')->load(), file_get_contents($prepared['directory'].'/scripts/report.py'));
+            self::assertSame($skill->resource('config/statistics.json')->load(), file_get_contents($prepared['directory'].'/config/statistics.json'));
             self::assertSame($supportContent, file_get_contents($prepared['directory'].'/'.$supportPath));
 
             foreach ([

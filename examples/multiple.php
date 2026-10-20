@@ -11,8 +11,8 @@ require __DIR__.'/demo-chat.php';
 $skillToolkit = SkillToolkit::make()->fromStorage(
     new FileSystemSkillStorage(__DIR__.'/skills'),
     new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
-    new DatabaseSkillStorage(new PDO('sqlite:'.__DIR__.'/skills.sqlite'), baseUri: 'db://skills'),
-    new DatabaseSkillStorage(new PDO('sqlite:'.__DIR__.'/text-stats.sqlite'), baseUri: 'db://text-stats'),
+    new DatabaseSkillStorage(new PDO('sqlite:'.__DIR__.'/skills.sqlite')),
+    new DatabaseSkillStorage(new PDO('sqlite:'.__DIR__.'/text-stats.sqlite')),
 );
 
 runSkillDemo($skillToolkit);

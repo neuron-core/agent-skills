@@ -4,26 +4,27 @@ status: accepted
 
 # Read one skill resource at a time as text
 
-Live trials showed agents describing delegated skills without loading them,
-inventing resource paths inside batches and transforming paths represented in
-nested JSON results. Use `skill(name)` for the complete skill document and
-`skill_resource(name, path)` for one supporting file returned as complete text.
-Preparation and storage ownership remain as defined in ADR-0001.
+A supporting file can name the next required reference, so the agent must read
+its contents before choosing that next path. `skill_resource(name, path)` reads
+one literal path relative to the selected skill root and returns the complete
+file contents directly as text. The skill name and path are already in the call,
+so the result needs no collection wrapper.
 
-A resource's name and path are already present in the call, so its result can
-be the file contents without a collection wrapper. Single-file reading lets the
-agent obtain a reference's contents before selecting the next actual path;
-it gives up batch reads in exchange for a smaller interface. The toolkit
-retains literal-path validation, source selection and explicit read errors.
+The toolkit's guidelines direct the agent to load skills with `skill(name)` when
+their instructions are needed to perform the task. When loaded instructions name
+another skill to call, the agent is directed to load it before performing steps
+that depend on it. Required resource paths are copied from instructions or references
+already read, preserving spaces, percent signs and Unicode.
 
-The toolkit's guidelines and skill tool description require actual calls for
-skills named by loaded instructions, before replying or asking clarifications.
-Required file paths come from content already read; scripts still use the separate
-preparation and execution tools. Generic skill documents are unchanged. No prose
-parser, automatic dependency loading or model-response enforcement is introduced.
+The selected skill provides a `Resource` whose `load()` delegates each read to
+its owning storage and identifier.
+The built-in storages validate literal relative paths, normalize confined dot
+segments and reject paths escaping the skill root. Expected resource-read
+failures return `ToolOutput::error()`; successful reads return the text itself,
+including empty text.
 
-The selected prototype passed 39/39 recorded cases, including skill delegation,
-a database reference and nested filesystem references with literal Unicode paths.
-Other variants passed initial trials and failed later confirmations, so these
-results support this choice without guaranteeing future model behaviour. This
-replaces the earlier batch-reading interface without compatibility aliases.
+This procedure makes each reference available before the next file is selected,
+at the cost of one tool call per file. It is guidance for the model: the toolkit
+does not parse prose to load dependencies automatically or enforce completion
+before a response. Script preparation and execution remain separate operations
+as defined in [ADR-0001](0001-name-based-skill-tools.md).

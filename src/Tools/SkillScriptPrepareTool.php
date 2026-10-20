@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace NeuronAI\AgentSkills\Tools;
 
 use RuntimeException;
+use NeuronAI\AgentSkills\Resource;
 use NeuronAI\AgentSkills\SkillRepository;
+use NeuronAI\AgentSkills\Storage\LocalSkillStorageInterface;
 use NeuronAI\Tools\PropertyType;
 use NeuronAI\Tools\Tool;
 use NeuronAI\Tools\ToolOutput;
@@ -41,10 +43,12 @@ class SkillScriptPrepareTool extends Tool
     {
         try {
             $skill = $this->repository->getByName($name);
-            $paths = $skill->resources();
+            $inventory = $skill->resources();
+            $paths = array_map(static fn (Resource $resource): string => $resource->path(), $inventory);
 
-            if (str_starts_with($skill->location(), 'file://')) {
-                $directory = rawurldecode(substr($skill->location(), 7));
+            $storage = $skill->storage();
+            if ($storage instanceof LocalSkillStorageInterface) {
+                $directory = $storage->directory($skill->identifier());
                 if (!str_starts_with($directory, '/') || str_starts_with($directory, '//')
                     || strpbrk($directory, "\0\\") !== false || !is_dir($directory)) {
                     throw new RuntimeException('The local skill directory is invalid or unavailable.');
@@ -55,14 +59,15 @@ class SkillScriptPrepareTool extends Tool
 
             $resources = [];
 
-            foreach ($paths as $path) {
+            foreach ($inventory as $resource) {
+                $path = $resource->path();
                 if ($path === '' || str_starts_with($path, '/') || str_contains($path, '\\')
                     || str_contains($path, "\0") || preg_match('~(?:^|/)\.\.?(?:/|$)~', $path)
                     || preg_match('~^[a-zA-Z][a-zA-Z0-9+.-]*:~', $path)) {
                     throw new RuntimeException('Use literal relative file paths without dot segments.');
                 }
 
-                $resources[$path] = $skill->readResource($path);
+                $resources[$path] = $resource->load();
             }
 
             $directory = sys_get_temp_dir().'/skill-script-'.bin2hex(random_bytes(16));

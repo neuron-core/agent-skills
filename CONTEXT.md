@@ -31,7 +31,8 @@ are interpreted, whether the skill is stored in a directory or another backend.
 
 **Skill resource**:
 A file belonging to a skill, including its skill document, references, scripts
-or assets.
+or assets. A `Resource` retains its relative path and owning storage association;
+its contents are loaded on demand.
 
 **Prepared script directory**:
 A local directory containing every resource of the selected skill for execution.
@@ -39,7 +40,7 @@ It may be the original skill directory or a temporary directory holding resource
 
 **Skill catalog**:
 The internal collection of available skills, retaining names, descriptions,
-canonical locations and storage ownership. Same-name skills remain distinct.
+storage-specific identifiers and storage ownership. Same-name skills remain distinct.
 
 **Agent-facing skill catalog**:
 One selected entry per declared skill name, containing only its name and
@@ -48,15 +49,10 @@ description so an agent can discover skills before loading their instructions.
 **Skill storage**:
 A source containing skills and their supporting resources.
 
-**Base URI**:
-The complete public root address of a skill storage, including its scheme and
-root path or logical name, such as `file:///app/skills/` or `db://team/`.
-_Avoid_: Scheme alone when referring to a storage's base URI.
-
-**Skill location**:
-The complete canonical URI identifying a skill root within a storage, such as
-`file:///app/skills/caveman`, without a trailing slash or document or resource
-path. It selects the skill independently of its declared name.
+**Local skill storage**:
+A skill storage implementing `LocalSkillStorageInterface`, able to provide an
+existing absolute native skill directory accessible to a local execution tool.
+Other storages require resource copies for script preparation.
 
 **Resource path**:
 The literal path of a file relative to the skill root, such as `SKILL.md` or
