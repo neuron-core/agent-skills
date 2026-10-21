@@ -1,0 +1,6 @@
+{
+  "currency": "USD",
+  "sale_status": "paid",
+  "refund_status": "refunded",
+  "excluded_status": "cancelled"
+}
