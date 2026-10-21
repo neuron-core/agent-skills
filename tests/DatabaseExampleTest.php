@@ -10,6 +10,7 @@ use NeuronAI\AgentSkills\Tools\SkillScriptPrepareTool;
 use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
 use PDO;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Yaml\Yaml;
 
 class DatabaseExampleTest extends TestCase
 {
@@ -91,32 +92,36 @@ class DatabaseExampleTest extends TestCase
         try {
             self::assertSame($skill->resource('scripts/analyze.py')->load(), file_get_contents($script));
             self::assertSame($skill->resource('scripts/report.py')->load(), file_get_contents($prepared['directory'].'/scripts/report.py'));
-            self::assertSame($skill->resource('config/statistics.json')->load(), file_get_contents($prepared['directory'].'/config/statistics.json'));
+            self::assertSame($skill->resource('config/analysis.yaml')->load(), file_get_contents($prepared['directory'].'/config/analysis.yaml'));
             self::assertSame($supportContent, file_get_contents($prepared['directory'].'/'.$supportPath));
 
+            $config = Yaml::parse($skill->resource('config/analysis.yaml')->load());
+
             foreach ([
-                ['oggi è bello', ['words' => 3, 'lines' => 1, 'characters' => 12]],
-                ["Ciao città\nseconda riga", ['words' => 4, 'lines' => 2, 'characters' => 23]],
-                ['', ['words' => 0, 'lines' => 0, 'characters' => 0]],
-                ["ciao\n", ['words' => 1, 'lines' => 1, 'characters' => 5]],
-            ] as [$text, $expected]) {
-                self::assertSame($expected, $this->runPython($prepared['directory'].'/scripts/report.py', json_encode($this->runPython($script, $text), JSON_THROW_ON_ERROR)));
+                ['oggi è bello', ['words' => 3, 'lines' => 1, 'characters' => 12], 'PASS: 3 words, limit 12.'],
+                ["Ciao città\nseconda riga", ['words' => 4, 'lines' => 2, 'characters' => 23], 'PASS: 4 words, limit 12.'],
+                ['', ['words' => 0, 'lines' => 0, 'characters' => 0], 'PASS: 0 words, limit 12.'],
+                ["ciao\n", ['words' => 1, 'lines' => 1, 'characters' => 5], 'PASS: 1 words, limit 12.'],
+                [str_repeat('word ', 12), ['words' => 12, 'lines' => 1, 'characters' => 60], 'PASS: 12 words, limit 12.'],
+                [str_repeat('word ', 13), ['words' => 13, 'lines' => 1, 'characters' => 65], 'FAIL: 13 words, limit 12.'],
+            ] as [$text, $expected, $expectedReport]) {
+                $analysis = $this->runPython($script, $text, ['--max-words', (string) $config['max_words']]);
+                self::assertSame($expected + ['max_words' => 12], json_decode($analysis, true, flags: JSON_THROW_ON_ERROR));
+                self::assertSame($expectedReport, $this->runPython($prepared['directory'].'/scripts/report.py', $analysis));
             }
 
-            file_put_contents($prepared['directory'].'/config/statistics.json', '{"include_whitespace": true, "metrics": ["characters"]}');
-            $counts = $this->runPython($script, 'oggi è bello');
-            self::assertSame(['words' => 3, 'lines' => 1, 'characters' => 12], $counts);
-            self::assertSame(['characters' => 12], $this->runPython($prepared['directory'].'/scripts/report.py', json_encode($counts, JSON_THROW_ON_ERROR)));
-
-            file_put_contents($prepared['directory'].'/config/statistics.json', '{"include_whitespace": false, "metrics": ["characters"]}');
-            $counts = $this->runPython($script, 'oggi è bello');
-            self::assertSame(['words' => 3, 'lines' => 1, 'characters' => 10], $counts);
-            self::assertSame(['characters' => 10], $this->runPython($prepared['directory'].'/scripts/report.py', json_encode($counts, JSON_THROW_ON_ERROR)));
+            foreach ([2 => 'FAIL: 3 words, limit 2.', 4 => 'PASS: 3 words, limit 4.'] as $limit => $expectedReport) {
+                file_put_contents($prepared['directory'].'/config/analysis.yaml', 'max_words: '.$limit."\n");
+                $config = Yaml::parse(file_get_contents($prepared['directory'].'/config/analysis.yaml'));
+                $analysis = $this->runPython($script, 'oggi è bello', ['--max-words', (string) $config['max_words']]);
+                self::assertSame(['words' => 3, 'lines' => 1, 'characters' => 12, 'max_words' => $limit], json_decode($analysis, true, flags: JSON_THROW_ON_ERROR));
+                self::assertSame($expectedReport, $this->runPython($prepared['directory'].'/scripts/report.py', $analysis));
+            }
         } finally {
             unlink($prepared['directory'].'/SKILL.md');
             unlink($script);
             unlink($prepared['directory'].'/scripts/report.py');
-            unlink($prepared['directory'].'/config/statistics.json');
+            unlink($prepared['directory'].'/config/analysis.yaml');
             unlink($prepared['directory'].'/'.$supportPath);
             rmdir($prepared['directory'].'/scripts');
             rmdir($prepared['directory'].'/config');
@@ -125,10 +130,10 @@ class DatabaseExampleTest extends TestCase
         }
     }
 
-    private function runPython(string $script, string $text): array
+    private function runPython(string $script, string $text, array $arguments = []): string
     {
         $process = proc_open(
-            ['python3', '-B', $script],
+            ['python3', '-B', $script, ...$arguments],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
         );
@@ -141,10 +146,8 @@ class DatabaseExampleTest extends TestCase
         fclose($pipes[2]);
         self::assertSame(0, proc_close($process), (string) $error);
         self::assertIsString($output);
-        $result = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
-        self::assertIsArray($result);
 
-        return $result;
+        return trim($output);
     }
 
     private function runExample(string $script): string

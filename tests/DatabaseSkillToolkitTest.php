@@ -123,7 +123,10 @@ class DatabaseSkillToolkitTest extends TestCase
         }
         $pdo->exec("DELETE FROM skills WHERE skill_identifier = 'writing'");
         $activation->execute();
-        $this->assertStringContainsString('was not found', $activation->getResult());
+        $result = $activation->getResult();
+        $this->assertInstanceOf(ToolOutput::class, $result);
+        $this->assertTrue($result->isError());
+        $this->assertStringContainsString('was not found', $result->getText());
         $this->assertSame($guidelines, $toolkit->guidelines());
         $this->assertSame('Original summary', $repository->getByName('writing')->description());
         $this->expectException(RuntimeException::class);
@@ -169,7 +172,10 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertStringContainsString('must be one of', $result->getText());
         $pdo->exec('DROP TABLE skills');
         $activation->setInputs(['name' => 'writing'])->execute();
-        $this->assertStringContainsString('Database skill table "skills" could not be read', $activation->getResult());
+        $result = $activation->getResult();
+        $this->assertInstanceOf(ToolOutput::class, $result);
+        $this->assertTrue($result->isError());
+        $this->assertStringContainsString('Database skill table "skills" could not be read', $result->getText());
         $resource->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
         $this->assertStringContainsString('Database skill table "skills" could not be read', (string) $resource->getResult());
 

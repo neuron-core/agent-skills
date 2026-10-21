@@ -25,14 +25,24 @@ class SkillEvaluatorTest extends TestCase
 {
     public function test_successful_skill_loading_is_accepted_without_a_model(): void
     {
-        $output = $this->recordExecution('risk-review', ['risk-review'], 'What change are you planning?');
-        $this->assertTrue((new SkillLoadingEvaluator())->performEvaluation($output, [])->isPassed());
+        $evaluator = new SkillLoadingEvaluator();
+
+        foreach ($evaluator->getDataset()->load() as $item) {
+            $output = $this->recordExecution('risk-review', ['risk-review'], 'What change are you planning?', $item['skills']);
+            $this->assertTrue($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
+        }
+    }
+
+    public function test_loading_does_not_require_a_final_answer(): void
+    {
+        $output = $this->recordExecution('risk-review', ['risk-review'], '');
+        $this->assertTrue((new SkillLoadingEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), [])->isPassed());
     }
 
     public function test_a_claimed_result_cannot_replace_an_actual_skill_load(): void
     {
         $output = $this->recordExecution('risk-review', [], 'I reviewed the plan.');
-        $this->assertFalse((new SkillLoadingEvaluator())->performEvaluation($output, [])->isPassed());
+        $this->assertFalse((new SkillLoadingEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), [])->isPassed());
     }
 
     public function test_discovery_accepts_loading_the_expected_skill_for_each_request(): void
@@ -40,8 +50,8 @@ class SkillEvaluatorTest extends TestCase
         $evaluator = new SkillDiscoveryEvaluator();
 
         foreach ($evaluator->getDataset()->load() as $item) {
-            $output = $this->recordExecution($item['skill'], [$item['skill']], 'Here is the requested assessment.');
-            $this->assertTrue($evaluator->performEvaluation($output, $item)->isPassed());
+            $output = $this->recordExecution($item['expectedSkill'], [$item['expectedSkill']], 'Here is the requested assessment.', $item['skills']);
+            $this->assertTrue($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
         }
     }
 
@@ -50,10 +60,81 @@ class SkillEvaluatorTest extends TestCase
         $evaluator = new SkillDiscoveryEvaluator();
 
         foreach ($evaluator->getDataset()->load() as $item) {
-            foreach ([[], ['sales-report']] as $calls) {
-                $output = $this->recordExecution($item['skill'], $calls, 'Here is the requested assessment.');
-                $this->assertFalse($evaluator->performEvaluation($output, $item)->isPassed());
+            foreach ([[], ['text-stats']] as $calls) {
+                $output = $this->recordExecution($item['expectedSkill'], $calls, 'Here is the requested assessment.');
+                $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
             }
+        }
+    }
+
+    public function test_discovery_rejects_extra_calls(): void
+    {
+        $evaluator = new SkillDiscoveryEvaluator();
+
+        foreach ([['bash', 'risk-review'], ['risk-review', 'bash'], ['risk-review', 'risk-review']] as $calls) {
+            $output = $this->recordExecution('risk-review', $calls, 'Here is the requested assessment.');
+            $this->assertFalse($evaluator->performEvaluation(
+                Trajectory::fromMessages($output['messages']),
+                ['expectedSkill' => 'risk-review'],
+            )->isPassed());
+        }
+    }
+
+    public function test_discovery_does_not_require_a_final_answer(): void
+    {
+        $output = $this->recordExecution('risk-review', ['risk-review'], '');
+        $this->assertTrue((new SkillDiscoveryEvaluator())->performEvaluation(
+            Trajectory::fromMessages($output['messages']),
+            ['expectedSkill' => 'risk-review'],
+        )->isPassed());
+    }
+
+    public function test_resource_cases_read_the_policy_and_check_the_priority_on_both_storages(): void
+    {
+        $evaluator = new SkillResourceEvaluator();
+
+        foreach ($evaluator->getDataset()->load() as $item) {
+            $fixture = new SkillFixture($item['skills']);
+            $fixture->setUp();
+
+            try {
+                [$load, $resource] = (new SkillToolkit($fixture->repository))->tools();
+                $load->setInputs(['name' => 'ticket-triage'])->execute();
+                $resource->setInputs(['name' => 'ticket-triage', 'path' => 'references/priorities.md'])->execute();
+                $loadCall = ToolCall::make('skill', 'load', ['name' => 'ticket-triage'])->setResult($load->getResult());
+                $readCall = ToolCall::make('skill_resource', 'read', ['name' => 'ticket-triage', 'path' => 'references/priorities.md'])
+                    ->setResult($resource->getResult());
+                $messages = [
+                    new ToolCallMessage(tools: [$loadCall]),
+                    new ToolResultMessage([$loadCall]),
+                    new ToolCallMessage(tools: [$readCall]),
+                    new ToolResultMessage([$readCall]),
+                ];
+
+                $this->assertTrue($evaluator->performEvaluation(Trajectory::fromMessages([
+                    ...$messages, new AssistantMessage($item['expectedPriority']),
+                ]), $item)->isPassed());
+                $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages([
+                    ...$messages, new AssistantMessage('P4'),
+                ]), $item)->isPassed());
+            } finally {
+                $fixture->cleanUp();
+            }
+        }
+    }
+
+    public function test_dependency_cases_accept_the_required_loads_without_requiring_a_final_answer(): void
+    {
+        $evaluator = new SkillDependencyEvaluator();
+
+        foreach ($evaluator->getDataset()->load() as $item) {
+            $output = $this->recordExecution(
+                $item['expectedSkill'],
+                [$item['expectedSkill'], ...$item['expectedDependencies']],
+                '',
+                $item['skills'],
+            );
+            $this->assertTrue($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
         }
     }
 
@@ -61,35 +142,64 @@ class SkillEvaluatorTest extends TestCase
     {
         foreach (['review-my-plan', 'release-readiness'] as $parent) {
             $output = $this->recordExecution($parent, [$parent], 'The deployment has risks and needs a rollback plan.');
-            $this->assertFalse((new SkillDependencyEvaluator())->performEvaluation($output, [])->isPassed());
+            $this->assertFalse((new SkillDependencyEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), [
+                'expectedSkill' => $parent,
+                'expectedDependencies' => $parent === 'review-my-plan' ? ['risk-review'] : ['risk-review', 'rollback-plan'],
+            ])->isPassed());
         }
     }
 
     public function test_repeated_alias_loads_without_the_dependency_fail(): void
     {
         $output = $this->recordExecution('review-my-plan', array_fill(0, 5, 'review-my-plan'), 'What plan would you like to discuss?');
-        $result = (new SkillDependencyEvaluator())->performEvaluation($output, []);
+        $result = (new SkillDependencyEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), [
+            'expectedSkill' => 'review-my-plan',
+            'expectedDependencies' => ['risk-review'],
+        ]);
         $this->assertGreaterThanOrEqual(2, $result->failedCount);
     }
 
     public function test_repeated_successful_load_fails_even_when_the_dependency_is_eventually_used(): void
     {
         $output = $this->recordExecution('review-my-plan', ['review-my-plan', 'review-my-plan', 'risk-review'], 'What change are you planning?');
-        $result = (new SkillDependencyEvaluator())->performEvaluation($output, []);
+        $result = (new SkillDependencyEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), [
+            'expectedSkill' => 'review-my-plan',
+            'expectedDependencies' => ['risk-review'],
+        ]);
         $this->assertSame(1, $result->failedCount);
-        $this->assertStringContainsString('loaded again', $result->failures[0]->getMessage());
+        $this->assertStringContainsString('actual was [skill, skill, skill]', $result->failures[0]->getMessage());
     }
 
-    public function test_an_independent_extra_call_does_not_replace_or_invalidate_the_required_work(): void
+    public function test_loading_rejects_extra_calls_before_or_after_the_requested_skill(): void
     {
-        $output = $this->recordExecution('risk-review', ['risk-review', 'bash'], 'What change are you planning?');
-        $this->assertTrue((new SkillLoadingEvaluator())->performEvaluation($output, [])->isPassed());
+        foreach ([['bash', 'risk-review'], ['risk-review', 'bash'], ['risk-review', 'risk-review']] as $calls) {
+            $output = $this->recordExecution('risk-review', $calls, 'What change are you planning?');
+            $this->assertFalse((new SkillLoadingEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), [])->isPassed());
+        }
+    }
+
+    public function test_loading_rejects_a_different_skill_or_a_failed_tool_result(): void
+    {
+        $evaluator = new SkillLoadingEvaluator();
+        $output = $this->recordExecution('risk-review', ['rollback-plan'], 'What change are you planning?');
+        $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), [])->isPassed());
+
+        foreach ([null, '', '   ', \NeuronAI\Tools\ToolOutput::error('Could not load the skill.')] as $result) {
+            $load = ToolCall::make('skill', 'failed', ['name' => 'risk-review']);
+
+            if ($result !== null) {
+                $load->setResult($result);
+            }
+
+            $output['messages'] = [new ToolCallMessage(tools: [$load]), new ToolResultMessage([$load]), new AssistantMessage('Done.')];
+            $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), [])->isPassed());
+        }
     }
 
     public function test_unnecessary_preparation_fails_even_when_the_answer_is_correct(): void
     {
         $output = $this->recordExecution('risk-review', ['risk-review', 'skill_script_prepare'], 'What change are you planning?');
-        $result = (new SkillLoadingEvaluator())->performEvaluation($output, []);
+        $result = (new SkillLoadingEvaluator())->performEvaluation(Trajectory::fromMessages($output['messages']), []);
         $this->assertSame(1, $result->failedCount);
         $this->assertStringContainsString('skill_script_prepare', $result->failures[0]->getMessage());
     }
@@ -107,21 +217,12 @@ class SkillEvaluatorTest extends TestCase
         ], $classes);
     }
 
-    private function recordExecution(string $skill, array $calls, string $answer): array
+    private function recordExecution(string $skill, array $calls, string $answer, ?array $skills = null): array
     {
-        $fixture = new SkillFixture($skill, 'filesystem');
+        $fixture = new SkillFixture($skills ?? array_fill_keys(array_keys(SkillFixture::catalogFiles()), 'filesystem'));
+        $fixture->setUp();
         $messages = [];
         try {
-            $instructions = $fixture->instructions();
-            $names = match ($skill) {
-                'review-my-plan' => [$skill, 'risk-review'],
-                'release-readiness' => [$skill, 'risk-review', 'rollback-plan'],
-                default => [$skill],
-            };
-            $steps = [];
-            foreach ($names as $name) {
-                $steps[] = ['tool' => 'skill', 'inputs' => ['name' => $name], 'result' => $instructions[$name]];
-            }
             [$load, , $prepare] = (new SkillToolkit($fixture->repository))->tools();
             foreach ($calls as $index => $name) {
                 if ($name === 'bash') {
@@ -144,8 +245,7 @@ class SkillEvaluatorTest extends TestCase
             }
             $messages[] = new AssistantMessage($answer);
 
-            return ['messages' => $messages, 'steps' => $steps, 'instructions' => $instructions,
-                'artifacts' => [], 'failure' => null];
+            return ['messages' => $messages];
         } finally {
             $fixture->cleanUp(Trajectory::fromMessages($messages));
         }

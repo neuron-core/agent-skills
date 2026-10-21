@@ -11,6 +11,7 @@ use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\Chat\Messages\ToolCallMessage;
 use NeuronAI\Chat\Messages\ToolResultMessage;
 use NeuronAI\Evaluation\BaseEvaluator;
+use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Tools\ToolCall;
 use NeuronAI\Tools\ToolOutput;
 use PHPUnit\Framework\TestCase;
@@ -20,14 +21,15 @@ class EvaluatorOrderTest extends TestCase
     public function test_resource_read_requires_the_skill_instructions_to_be_available(): void
     {
         $steps = [
-            ['tool' => 'skill', 'inputs' => ['name' => 'eval-reader'], 'result' => 'Read guide.'],
-            ['tool' => 'skill_resource', 'inputs' => ['name' => 'eval-reader', 'path' => 'references/guide.md'], 'result' => 'TOKEN'],
+            ['tool' => 'skill', 'inputs' => ['name' => 'ticket-triage'], 'result' => 'Read guide.'],
+            ['tool' => 'skill_resource', 'inputs' => ['name' => 'ticket-triage', 'path' => 'references/priorities.md'], 'result' => 'TOKEN'],
         ];
-        $load = ToolCall::make('skill', 'load', ['name' => 'eval-reader'])->setResult('Read guide.');
-        $read = ToolCall::make('skill_resource', 'read', ['name' => 'eval-reader', 'path' => 'references/guide.md'])->setResult('TOKEN');
+        $load = ToolCall::make('skill', 'load', ['name' => 'ticket-triage'])->setResult('Read guide.');
+        $read = ToolCall::make('skill_resource', 'read', ['name' => 'ticket-triage', 'path' => 'references/priorities.md'])->setResult('TOKEN');
         $this->assertTrue($this->passes([[$load], [$read]], $steps, new SkillResourceEvaluator()));
         $this->assertFalse($this->passes([[$load, $read]], $steps, new SkillResourceEvaluator()));
         $this->assertFalse($this->passes([[$read], [$load]], $steps, new SkillResourceEvaluator()));
+        $this->assertFalse($this->passes([[$load], [$read], [$read]], $steps, new SkillResourceEvaluator()));
         $read->setResult(ToolOutput::error('Unavailable'));
         $this->assertFalse($this->passes([[$load], [$read]], $steps, new SkillResourceEvaluator()));
     }
@@ -62,35 +64,42 @@ class EvaluatorOrderTest extends TestCase
 
         $this->assertTrue($this->passes([[$parent], [$first, $second]], $steps));
         $this->assertTrue($this->passes([[$parent], [$second, $first]], $steps));
+        $this->assertTrue($this->passes([[$parent], [$second], [$first]], $steps));
+        $this->assertFalse($this->passes([[$parent], [$first, $first]], $steps));
     }
 
-    public function test_reporting_requires_a_separate_execution_after_observing_analysis(): void
+    public function test_reporting_requires_configuration_preparation_and_separate_execution_after_analysis(): void
     {
-        $steps = [
-            ['tool' => 'skill', 'inputs' => ['name' => 'eval-runner'], 'result' => 'Read reference.'],
-            ['tool' => 'skill_resource', 'inputs' => ['name' => 'eval-runner', 'path' => 'references/run.md'], 'result' => 'Run scripts.'],
-            ['tool' => 'skill_script_prepare', 'inputs' => ['name' => 'eval-runner']],
-            ['tool' => 'bash', 'inputs' => [], 'output' => 'ANALYZED'],
-            ['tool' => 'bash', 'inputs' => [], 'output' => 'REPORT'],
-        ];
-        $load = ToolCall::make('skill', 'load', ['name' => 'eval-runner'])->setResult('Read reference.');
-        $read = ToolCall::make('skill_resource', 'read', ['name' => 'eval-runner', 'path' => 'references/run.md'])->setResult('Run scripts.');
-        $prepare = ToolCall::make('skill_script_prepare', 'prepare', ['name' => 'eval-runner'])
+        $steps = [['tool' => 'skill', 'inputs' => ['name' => 'text-stats'], 'result' => 'Read configuration, analyze, inspect, then report.']];
+        $load = ToolCall::make('skill', 'load', ['name' => 'text-stats'])->setResult($steps[0]['result']);
+        $config = ToolCall::make('skill_resource', 'config', ['name' => 'text-stats', 'path' => 'config/analysis.yaml'])
+            ->setResult('max_words: 12');
+        $prepare = ToolCall::make('skill_script_prepare', 'prepare', ['name' => 'text-stats'])
             ->setResult(['directory' => '/tmp/example', 'files' => []]);
-        $analyze = ToolCall::make('bash', 'analyze', ['command' => 'php scripts/analyze.php'])
-            ->setResult(['exit_code' => 0, 'output' => 'ANALYZED']);
-        $report = ToolCall::make('bash', 'report', ['command' => 'php scripts/report.php'])
-            ->setResult(['exit_code' => 0, 'output' => 'REPORT']);
-        $prefix = [[$load], [$read], [$prepare]];
-        $this->assertTrue($this->passes([...$prefix, [$analyze], [$report]], $steps, new ScriptWorkflowEvaluator()));
-        $this->assertFalse($this->passes([...$prefix, [$analyze, $report]], $steps, new ScriptWorkflowEvaluator()));
+        $counts = '{"words":2,"lines":1,"characters":10,"max_words":12}';
+        $analyze = ToolCall::make('bash', 'analyze', ['command' => 'python3 scripts/analyze.py --max-words 12', 'working_directory' => '/tmp/example'])
+            ->setResult(['exit_code' => 0, 'output' => $counts]);
+        $report = ToolCall::make('bash', 'report', ['command' => 'python3 scripts/report.py', 'working_directory' => '/tmp/example'])
+            ->setResult(['exit_code' => 0, 'output' => 'PASS: 2 words, limit 12.']);
+        $prefix = [[$load], [$config], [$prepare]];
+        $evaluator = new ScriptWorkflowEvaluator();
+        $this->assertTrue($this->passes([...$prefix, [$analyze], [$report]], $steps, $evaluator));
+        $this->assertFalse($this->passes([...$prefix, [$analyze, $report]], $steps, $evaluator));
+        $this->assertFalse($this->passes([[$load], [$prepare], [$analyze], [$report]], $steps, $evaluator));
+        $this->assertFalse($this->passes([[$load], [$config, $prepare], [$analyze], [$report]], $steps, $evaluator));
 
-        $combined = ToolCall::make('bash', 'combined', ['command' => 'php scripts/analyze.php && php scripts/report.php'])
-            ->setResult(['exit_code' => 0, 'output' => "ANALYZED\nREPORT"]);
-        $this->assertFalse($this->passes([...$prefix, [$combined]], $steps, new ScriptWorkflowEvaluator()));
-        $claimed = ToolCall::make('bash', 'claimed', ['command' => 'echo ANALYZED'])
-            ->setResult(['exit_code' => 0, 'output' => 'ANALYZED']);
-        $this->assertFalse($this->passes([...$prefix, [$claimed], [$report]], $steps, new ScriptWorkflowEvaluator()));
+        $combined = ToolCall::make('bash', 'combined', ['command' => 'python3 scripts/analyze.py --max-words 12 | python3 scripts/report.py'])
+            ->setResult(['exit_code' => 0, 'output' => 'PASS: 2 words, limit 12.']);
+        $this->assertFalse($this->passes([...$prefix, [$combined]], $steps, $evaluator));
+        $claimed = ToolCall::make('bash', 'claimed', ['command' => 'echo '.escapeshellarg($counts)])
+            ->setResult(['exit_code' => 0, 'output' => $counts]);
+        $this->assertFalse($this->passes([...$prefix, [$claimed], [$report]], $steps, $evaluator));
+
+        $report->setResult(['exit_code' => 0, 'output' => $counts]);
+        $this->assertFalse($this->passes([...$prefix, [$analyze], [$report]], $steps, $evaluator));
+        $report->setResult(['exit_code' => 0, 'output' => 'PASS: 2 words, limit 12.']);
+        $analyze->setResult(['exit_code' => 0, 'output' => '{"words":2,"lines":1,"characters":10,"max_words":11}']);
+        $this->assertFalse($this->passes([...$prefix, [$analyze], [$report]], $steps, $evaluator));
     }
 
     /** @param list<list<ToolCall>> $batches */
@@ -104,15 +113,20 @@ class EvaluatorOrderTest extends TestCase
         $messages[] = new AssistantMessage('TOKEN');
         $evaluator ??= new SkillDependencyEvaluator();
 
-        $instructions = [];
-        foreach ($steps as $step) {
-            if ($step['tool'] === 'skill') {
-                $instructions[$step['inputs']['name']] = $step['result'];
-            }
+        if ($evaluator instanceof SkillResourceEvaluator) {
+            return $evaluator->performEvaluation(Trajectory::fromMessages($messages), ['expectedPriority' => 'TOKEN'])->isPassed();
         }
 
-        return $evaluator->performEvaluation([
-            'messages' => $messages, 'steps' => $steps, 'instructions' => $instructions, 'expected_total' => 'TOKEN', 'artifacts' => [], 'failure' => null,
-        ], ['priority' => 'TOKEN'])->isPassed();
+        if ($evaluator instanceof SkillDependencyEvaluator) {
+            return $evaluator->performEvaluation(Trajectory::fromMessages($messages), [
+                'expectedSkill' => $steps[0]['inputs']['name'],
+                'expectedDependencies' => array_column(array_column(array_slice($steps, 1), 'inputs'), 'name'),
+            ])->isPassed();
+        }
+
+        return $evaluator->performEvaluation(Trajectory::fromMessages($messages), [
+            'expectedAnalysis' => '{"words":2,"lines":1,"characters":10,"max_words":12}',
+            'expectedReport' => 'PASS: 2 words, limit 12.',
+        ])->isPassed();
     }
 }

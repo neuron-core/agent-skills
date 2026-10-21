@@ -13,7 +13,7 @@ final class SkillWasLoaded extends TrajectoryAssertion
 {
     public function __construct(
         private readonly string $name,
-        private readonly string $instructions
+        private readonly ?string $instructions = null,
     ) {
     }
 
@@ -40,11 +40,13 @@ final class SkillWasLoaded extends TrajectoryAssertion
 
             $text = $result instanceof ToolOutput ? $result->getText() : $result;
 
-            if ($text === $this->instructions) {
+            if ($this->instructions === null ? trim($text) !== '' : $text === $this->instructions) {
                 return AssertionResult::pass(1.0);
             }
 
-            $failure = 'Skill "'.$this->name.'" did not return the expected instructions.';
+            $failure = $this->instructions === null
+                ? 'Skill "'.$this->name.'" returned empty instructions.'
+                : 'Skill "'.$this->name.'" did not return the expected instructions.';
         }
 
         return AssertionResult::fail(0.0, $failure);

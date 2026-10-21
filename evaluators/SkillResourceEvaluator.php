@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Evaluators;
 
-use InvalidArgumentException;
-use NeuronAI\AgentSkills\Evaluators\Assertions\EvidenceIsValid;
-use NeuronAI\AgentSkills\Evaluators\Assertions\NoRepeatedSkillLoads;
 use NeuronAI\AgentSkills\Evaluators\Assertions\ResourceWasRead;
 use NeuronAI\AgentSkills\Evaluators\Fixtures\SkillFixture;
 use NeuronAI\Evaluation\Assertions\StringContainsAll;
-use NeuronAI\Evaluation\Assertions\StringLengthBetween;
-use NeuronAI\Evaluation\Assertions\Trajectory\ToolWasNotCalled;
+use NeuronAI\Evaluation\Assertions\Trajectory\Mode;
+use NeuronAI\Evaluation\Assertions\Trajectory\TrajectoryMatches;
 use NeuronAI\Evaluation\Contracts\DatasetInterface;
 use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Evaluation\Dataset\ArrayDataset;
@@ -21,81 +18,96 @@ final class SkillResourceEvaluator extends BaseSkillEvaluator
     public function getDataset(): DatasetInterface
     {
         return new ArrayDataset([
-            ['execution' => 1, 'mode' => 'chat', 'priority' => 'P1', 'prompt' => 'Use ticket-triage: the service is unavailable to all users.'],
-            ['execution' => 2, 'mode' => 'stream', 'priority' => 'P2', 'prompt' => 'Use ticket-triage: some users cannot complete payments and there is no workaround.'],
-            ['execution' => 3, 'mode' => 'stream', 'priority' => 'P3', 'prompt' => 'ticket-triage: CSV export fails, but users can export the same data as JSON.'],
+            [
+                'skills' => [
+                    'ticket-triage' => 'filesystem',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedPriority' => 'P1',
+                'prompt' => 'Use ticket-triage: the service is unavailable to all users.',
+            ],
+            [
+                'skills' => [
+                    'ticket-triage' => 'database',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedPriority' => 'P1',
+                'prompt' => 'Use ticket-triage: the service is unavailable to all users.',
+            ],
+            [
+                'skills' => [
+                    'ticket-triage' => 'filesystem',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedPriority' => 'P2',
+                'prompt' => 'Use ticket-triage: some users cannot complete payments and there is no workaround.',
+            ],
+            [
+                'skills' => [
+                    'ticket-triage' => 'database',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedPriority' => 'P2',
+                'prompt' => 'Use ticket-triage: some users cannot complete payments and there is no workaround.',
+            ],
+            [
+                'skills' => [
+                    'ticket-triage' => 'filesystem',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedPriority' => 'P3',
+                'prompt' => 'ticket-triage: CSV export fails, but users can export the same data as JSON.',
+            ],
+            [
+                'skills' => [
+                    'ticket-triage' => 'database',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedPriority' => 'P3',
+                'prompt' => 'ticket-triage: CSV export fails, but users can export the same data as JSON.',
+            ],
         ]);
     }
 
-    public function run(array $datasetItem): array
+    public function run(array $datasetItem): Trajectory
     {
-        $fixture = new SkillFixture('ticket-triage', 'filesystem');
+        $fixture = new SkillFixture($datasetItem['skills']);
+        $fixture->setUp();
 
-        $instructions = $fixture->instructions();
-        $reference = $fixture->repository->getByName('ticket-triage')->resource('references/priorities.md')->load();
-
-        $steps = [
-            [
-                'tool' => 'skill',
-                'inputs' => ['name' => 'ticket-triage'],
-                'result' => $instructions['ticket-triage'],
-            ],
-            [
-                'tool' => 'skill_resource',
-                'inputs' => ['name' => 'ticket-triage', 'path' => 'references/priorities.md'],
-                'result' => $reference,
-            ],
-        ];
-
-        $prompt = $datasetItem['prompt'];
-
-        return $this->runSession(
-            fixture: $fixture,
-            prompt: $prompt,
-            mode: $datasetItem['mode'],
-        ) + ['steps' => $steps];
+        try {
+            return $this->runSession(
+                repository: $fixture->repository,
+                prompt: $datasetItem['prompt'],
+            );
+        } finally {
+            $fixture->cleanUp();
+        }
     }
 
-    public function evaluate(mixed $output, array $datasetItem): void
+    public function evaluate(mixed $trajectory, array $datasetItem): void
     {
-        if (!is_array($output) || !is_array($output['messages'] ?? null)) {
-            throw new InvalidArgumentException('Expected recorded conversation messages and execution evidence.');
-        }
-
-        $trajectory = Trajectory::fromMessages($output['messages']);
-
         $this->assert(
-            new NoRepeatedSkillLoads($output['instructions']),
+            new TrajectoryMatches(['skill', 'skill_resource'], Mode::Strict),
             $trajectory,
-            'successful skill loads are reused',
+            'exactly one skill load followed by one resource read',
         );
 
         $this->assert(
-            new ToolWasNotCalled('skill_script_prepare'),
+            new ResourceWasRead('ticket-triage', 'references/priorities.md'),
             $trajectory,
-            'no script preparation needed',
+            'priority policy read successfully after the skill instructions',
         );
 
         $this->assert(
-            new ResourceWasRead(
-                skill: $output['steps'][0]['inputs']['name'],
-                path: $output['steps'][1]['inputs']['path'],
-                contents: $output['steps'][1]['result'],
-                instructions: $output['steps'][0]['result'],
-            ),
-            $trajectory,
-            'priority policy read after the skill instructions',
-        );
-
-        $this->assert(
-            new StringContainsAll([$datasetItem['priority']]),
+            new StringContainsAll([$datasetItem['expectedPriority']]),
             $trajectory->finalAnswer(),
             'priority matches the ticket impact',
-        );
-
-        $this->assert(
-            new EvidenceIsValid(),
-            ['execution completed' => $output['failure'] === null],
         );
     }
 }

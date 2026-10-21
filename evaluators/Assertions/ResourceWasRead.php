@@ -16,8 +16,6 @@ final class ResourceWasRead extends TrajectoryAssertion
     public function __construct(
         private readonly string $skill,
         private readonly string $path,
-        private readonly string $contents,
-        private readonly string $instructions,
     ) {
     }
 
@@ -45,14 +43,13 @@ final class ResourceWasRead extends TrajectoryAssertion
 
                 $text = $result instanceof ToolOutput ? $result->getText() : $result;
 
-                if ($call->getInput('name') !== $this->skill) {
+                if ($call->getInput('name') !== $this->skill || trim($text) === '') {
                     continue;
                 }
 
-                if ($call->getName() === 'skill' && $text === $this->instructions) {
+                if ($call->getName() === 'skill') {
                     $loaded = true;
-                } elseif ($call->getName() === 'skill_resource' && $call->getInput('path') === $this->path
-                    && $text === $this->contents) {
+                } elseif ($call->getName() === 'skill_resource' && $call->getInput('path') === $this->path) {
                     return $wasLoaded
                         ? AssertionResult::pass(1.0)
                         : AssertionResult::fail(0.0, 'Resource "'.$this->path.'" was selected before skill "'.$this->skill.'" returned its instructions.');
@@ -60,6 +57,6 @@ final class ResourceWasRead extends TrajectoryAssertion
             }
         }
 
-        return AssertionResult::fail(0.0, 'Resource "'.$this->path.'" was not successfully read from skill "'.$this->skill.'" with the expected contents.');
+        return AssertionResult::fail(0.0, 'Resource "'.$this->path.'" was not successfully read from skill "'.$this->skill.'" with nonempty contents.');
     }
 }

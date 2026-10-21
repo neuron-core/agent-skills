@@ -8,6 +8,7 @@ use NeuronAI\Agent\Agent;
 use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\Chat\Messages\ToolCallMessage;
 use NeuronAI\Tools\ToolCall;
+use NeuronAI\Tools\ToolOutput;
 use NeuronAI\Chat\Messages\ToolResultMessage;
 use NeuronAI\Chat\Messages\UserMessage;
 use RuntimeException;
@@ -150,7 +151,10 @@ class MultipleSkillStoragesTest extends TestCase
             unlink($this->root.'/project/caveman/SKILL.md');
         }
         $skill->setInputs(['name' => 'caveman'])->execute();
-        $this->assertStringContainsString('was not found', $skill->getResult());
+        $result = $skill->getResult();
+        $this->assertInstanceOf(ToolOutput::class, $result);
+        $this->assertTrue($result->isError());
+        $this->assertStringContainsString('was not found', $result->getText());
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Resource "local-only.md" was not found in skill "'.$databaseIdentifier.'".');

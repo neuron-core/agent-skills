@@ -6,16 +6,21 @@ namespace NeuronAI\AgentSkills\Tests\Fixtures;
 
 use NeuronAI\AgentSkills\Evaluators\BaseSkillEvaluator;
 use NeuronAI\Evaluation\Contracts\DatasetInterface;
+use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Evaluation\Dataset\ArrayDataset;
 use NeuronAI\Providers\AIProviderInterface;
 
 final class SessionSkillEvaluator extends BaseSkillEvaluator
 {
-    public function __construct(AIProviderInterface $provider)
+    public function __construct(private readonly AIProviderInterface $testProvider)
     {
         parent::__construct();
 
-        $this->provider = $provider;
+    }
+
+    protected function provider(): AIProviderInterface
+    {
+        return $this->testProvider;
     }
 
     public function getDataset(): DatasetInterface
@@ -23,13 +28,12 @@ final class SessionSkillEvaluator extends BaseSkillEvaluator
         return new ArrayDataset([]);
     }
 
-    public function run(array $datasetItem): array
+    public function run(array $datasetItem): Trajectory
     {
         return $this->runSession(
-            fixture: $datasetItem['fixture'],
+            repository: $datasetItem['repository'],
             prompt: $datasetItem['prompt'],
-            mode: $datasetItem['mode'],
-            captureArtifacts: $datasetItem['captureArtifacts'] ?? null,
+            onToolCalled: $datasetItem['onToolCalled'] ?? null,
         );
     }
 

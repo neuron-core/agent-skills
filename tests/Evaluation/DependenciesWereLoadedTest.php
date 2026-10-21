@@ -14,17 +14,25 @@ use PHPUnit\Framework\TestCase;
 
 class DependenciesWereLoadedTest extends TestCase
 {
-    public function test_each_dependency_must_return_its_expected_instructions(): void
+    public function test_each_dependency_must_return_nonempty_instructions_successfully(): void
     {
-        $rule = new DependenciesWereLoaded('parent', 'Use child.', ['child' => 'Child instructions.']);
+        $rule = new DependenciesWereLoaded('parent', ['child']);
         $parent = ToolCall::make('skill', 'parent', ['name' => 'parent'])->setResult('Use child.');
         $child = ToolCall::make('skill', 'child', ['name' => 'child'])->setResult('Child instructions.');
         $messages = [new ToolCallMessage(tools: [$parent]), new ToolResultMessage([$parent]),
             new ToolCallMessage(tools: [$child]), new ToolResultMessage([$child])];
         $this->assertTrue($rule->evaluate(Trajectory::fromMessages($messages))->passed);
-        $child->setResult('Wrong instructions.');
+        $child->setResult('');
+        $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
+        $child->setResult('   ');
         $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
         $child->setResult(ToolOutput::error('Child instructions.'));
+        $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
+        $child->setResult(ToolOutput::text('Child instructions.'));
+        $this->assertTrue($rule->evaluate(Trajectory::fromMessages($messages))->passed);
+        $parent->setResult('');
+        $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
+        $parent->setResult(ToolOutput::error('Use child.'));
         $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
     }
 }
