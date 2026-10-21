@@ -17,7 +17,7 @@ class SkillTool extends Tool
 
     protected string $name = 'skill';
 
-    protected ?string $description = 'Load a skill\'s complete task instructions by name.';
+    protected ?string $description = 'Load a skill\'s instructions by name.';
 
     public function __construct(protected SkillRepository $repository)
     {
@@ -29,7 +29,7 @@ class SkillTool extends Tool
             new ToolProperty(
                 name: 'name',
                 type: PropertyType::STRING,
-                description: 'The declared name of the skill to load.',
+                description: 'Skill name.',
                 required: true,
                 enum: array_values(array_unique($this->repository->names())),
             ),

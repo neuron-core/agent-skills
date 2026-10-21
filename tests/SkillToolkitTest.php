@@ -134,10 +134,9 @@ class SkillToolkitTest extends TestCase
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
         $this->assertStringContainsString('Use skills explicitly requested by the user or relevant to the task.', $systemPrompt);
-        $this->assertStringContainsString('Follow the loaded instructions, including any required calls to other', $systemPrompt);
-        $this->assertStringContainsString('skills. Load those skills before performing the steps that depend on them.', $systemPrompt);
-        $this->assertSame('Load a skill\'s complete task instructions by name.', $skillTool->getDescription());
-        $this->assertStringContainsString('Read required files with `skill_resource`', $systemPrompt);
+        $this->assertStringContainsString('Load their instructions with `skill` and follow them in order to completion.', $systemPrompt);
+        $this->assertStringContainsString('Load required skills before performing the steps that depend on them.', $systemPrompt);
+        $this->assertSame('Load a skill\'s instructions by name.', $skillTool->getDescription());
         $this->assertStringNotContainsString('file://', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
@@ -178,8 +177,6 @@ class SkillToolkitTest extends TestCase
             $prompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
             $this->assertStringContainsString('writing: Write clear prose', $prompt);
             $this->assertStringNotContainsString('location:', $prompt);
-            $this->assertStringContainsString('Prepare scripts with `skill_script_prepare`', $prompt);
-            $this->assertStringContainsString('directory with an execution tool.', $prompt);
             foreach ([
                 "# Writing instructions\n\nPrefer direct sentences.",
                 "# Style guide\n\nUse concrete words.\n",
