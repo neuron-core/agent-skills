@@ -74,31 +74,30 @@ The agent selects the declared name `text-stats`. The skill stores
 two collaborating Python scripts and a configuration file alongside `SKILL.md`:
 
 ```text
-scripts/analyze.py       Counts text from stdin and returns JSON
-scripts/report.py        Reads the first script's JSON and selects output metrics
-config/statistics.json  Settings read independently by both scripts
+config/analysis.yaml  Contains the max_words limit to read before execution
+scripts/analyze.py    Receives --max-words and text on stdin, then returns JSON
+scripts/report.py     Reads that JSON and returns a PASS or FAIL summary
 ```
 
-Analyze the exact input text with `analyze.py`, then inspect its JSON for word,
-line and character counts before supplying that JSON to `report.py`. Both scripts
-locate the configuration relative to their own files.
-`include_whitespace` controls whether the first script counts whitespace in
-`characters`; `metrics` selects the fields returned by the second script.
-The defaults include whitespace and report `words`, `lines` and `characters`.
+Read `config/analysis.yaml`, then pass its `max_words` value as the required
+`--max-words` argument to `analyze.py`. Supply the exact input text through stdin.
+Inspect the returned JSON before supplying it through stdin to `report.py`.
+The default limit is 12 words. The report returns PASS when the word count is
+within the limit and FAIL when it exceeds the limit. Both are successful executions.
 All three resources must be present, with their relative paths preserved. The
 skill describes the two-step workflow without storage or tool instructions.
 
-For the exact text `Ciao città` (no final newline), expect:
+For the exact text `Ciao città` (no final newline), the analysis returns:
 
 ```json
-{"words": 2, "lines": 1, "characters": 10}
+{"words": 2, "lines": 1, "characters": 10, "max_words": 12}
 ```
+
+The report returns `PASS: 2 words, limit 12.`
 
 Words are whitespace-separated tokens. Lines follow Python's `splitlines()`:
 empty input has zero lines and a final newline does not add an extra line.
-Characters are Unicode code points, including spaces and line endings by
-default. With `include_whitespace: false`, whitespace code points are excluded
-from the character count; word and line counts retain the same definitions.
+Characters are Unicode code points, including spaces and line endings.
 
 Database storage discovers skills, enumerates their resources and reads bytes;
 it does not prepare or execute scripts. `skill_script_prepare(name)` copies every
@@ -110,12 +109,13 @@ installed. Prepared directories remain in `sys_get_temp_dir()` after the CLI
 session ends; cleanup, including partial copies after errors, belongs to the
 application or environment.
 
-Inspect the trace for `skill`, `skill_script_prepare` with name `text-stats`
-preparing all four resources, then `bash` executing
-the analysis script from the returned directory. The agent should inspect the
-returned counts before supplying that JSON to the reporting script, and report
-its successful result. The skill leaves command construction to the agent.
-The skill specifies required files, UTF-8 standard input and JSON output. The
+Inspect the trace for `skill`, `skill_resource` reading `config/analysis.yaml`,
+then `skill_script_prepare` with name `text-stats` preparing all four resources.
+The first `bash` executes `analyze.py --max-words 12` from the returned directory.
+The agent should inspect its JSON before a separate `bash` call supplies it to
+`report.py`, then return the PASS or FAIL result. The skill leaves command
+construction to the agent. The skill specifies required files, UTF-8 standard
+input, JSON analysis and a text report. The
 application decides how to prepare resources and supply input to its execution
 tool. For this shell-based demo, `printf '%s' 'Ciao città'` preserves text without
 a final newline, whereas a shell heredoc adds one. These shell details belong to

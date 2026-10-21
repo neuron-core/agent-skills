@@ -18,8 +18,8 @@ class SkillScriptPrepareTool extends Tool
 {
     protected string $name = 'skill_script_prepare';
 
-    protected ?string $description = 'Use only before executing a script named in loaded skill instructions or references. '
-        .'Returns the skill\'s local directory and files.';
+    protected ?string $description = 'When loaded instructions require running a script, prepare its files after reading required references. '
+        .'Returns their local directory and file paths.';
 
     public function __construct(private SkillRepository $repository)
     {

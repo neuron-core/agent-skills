@@ -38,11 +38,12 @@ class SkillToolkit extends AbstractToolkit
         }
 
         return <<<'GUIDELINES'
-            Use skills explicitly requested by the user or relevant to the task.
-            Load their instructions with `skill` and follow them in order to completion.
-            Load required skills before performing the steps that depend on them.
-            Read required references with `skill_resource` before continuing.
-            For scripts required by loaded instructions, execute from the directory returned by `skill_script_prepare`.
+            Use `skill` for skills requested by the user or relevant to the task.
+            Follow the returned instructions to completion.
+            If instructions request another skill, call `skill` with that skill's name next.
+            Read required references successfully with `skill_resource`, using their exact paths.
+            For scripts, call `skill_script_prepare` after these reads, then execute from its returned directory.
+            Execute steps sequentially, inspecting each tool result before selecting the next call.
             GUIDELINES
             ."\n\nAvailable skills:\n".$this->formatCatalog($catalog);
     }

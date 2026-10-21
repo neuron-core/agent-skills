@@ -133,10 +133,10 @@ class SkillToolkitTest extends TestCase
         $systemPrompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
-        $this->assertStringContainsString('Use skills explicitly requested by the user or relevant to the task.', $systemPrompt);
-        $this->assertStringContainsString('Load their instructions with `skill` and follow them in order to completion.', $systemPrompt);
-        $this->assertStringContainsString('Load required skills before performing the steps that depend on them.', $systemPrompt);
-        $this->assertSame('Load a skill\'s instructions by name.', $skillTool->getDescription());
+        $this->assertStringContainsString('Use `skill` for skills requested by the user or relevant to the task.', $systemPrompt);
+        $this->assertStringContainsString('Follow the returned instructions to completion.', $systemPrompt);
+        $this->assertStringContainsString('If instructions request another skill, call `skill` with that skill\'s name next.', $systemPrompt);
+        $this->assertSame('Load a skill\'s complete instructions by name. Do not reload a successfully loaded skill; follow its returned instructions.', $skillTool->getDescription());
         $this->assertStringNotContainsString('file://', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
@@ -487,7 +487,7 @@ class SkillToolkitTest extends TestCase
             ->getMessage();
 
         $this->assertSame('I could not read that file.', $response->getContent());
-        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, str_replace('{identifier}', 'writing', $expected)));
+        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, str_replace('{identifier}', 'writing', $expected), expectError: true));
     }
 
     /** @return array<string, array{int, bool, string}> */
@@ -902,7 +902,7 @@ class SkillToolkitTest extends TestCase
         $this->assertSame($content, $tool->getResult());
     }
 
-    protected function hasToolResult(RequestRecord $record, string $expected): bool
+    protected function hasToolResult(RequestRecord $record, string $expected, bool $expectError = false): bool
     {
         foreach ($record->messages as $message) {
             if (!$message instanceof ToolResultMessage) {
@@ -910,7 +910,10 @@ class SkillToolkitTest extends TestCase
             }
 
             foreach ($message->getToolCalls() as $tool) {
-                if ((string) $tool->getResult() === $expected) {
+                $result = $tool->getResult();
+
+                if ((string) $result === $expected
+                    && (!$expectError || ($result instanceof ToolOutput && $result->isError()))) {
                     return true;
                 }
             }

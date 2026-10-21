@@ -7,7 +7,7 @@ description: Validate an orders CSV before importing it. Use when checking requi
 
 Read references/order-format.md for the import requirements.
 
-Run `php scripts/validate.php <csv-file>` on the file supplied by the user.
+Run `python3 scripts/validate.py <csv-file>` on the file supplied by the user.
 The validator reads its rules from config/validation.json and reports
 errors by row and column.
 

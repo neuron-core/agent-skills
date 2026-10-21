@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace NeuronAI\AgentSkills\Tests\Evaluation;
 
 use NeuronAI\AgentSkills\Evaluators\Fixtures\SkillFixture;
+use NeuronAI\AgentSkills\Tests\Fixtures\SessionSkillEvaluator;
 use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\Chat\Messages\Message;
 use NeuronAI\Chat\Messages\ToolCallMessage;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Evaluation\EvaluatorDiscovery;
-use NeuronAI\AgentSkills\Tests\Fixtures\SessionSkillEvaluator;
 use NeuronAI\Testing\FakeAIProvider;
 use NeuronAI\Tools\ToolCall;
 use PHPUnit\Framework\TestCase;
@@ -19,13 +19,13 @@ use RuntimeException;
 
 class SkillEvaluatorExecutionTest extends TestCase
 {
-    /** @dataProvider executionModes */
-    public function test_execution_records_tools_and_artifacts_before_cleaning_all_prepared_directories(string $storage, string $mode): void
+    /** @dataProvider storages */
+    public function test_session_executes_tools_and_caller_cleans_prepared_directories(string $storage): void
     {
-        $catalog = SkillFixture::catalogFiles();
-        $fixture = new SkillFixture('csv-check', $storage, expectedArtifacts: [
-            'config/validation.json' => $catalog['csv-check']['config/validation.json'],
-        ]);
+        $fixture = new SkillFixture(['csv-check' => $storage, 'rollback-plan' => $storage]);
+        $fixture->setUp();
+        $reportFile = tempnam(sys_get_temp_dir(), 'skill-report-');
+        $this->assertIsString($reportFile);
         $provider = new FakeAIProvider(
             new ToolCallMessage(tools: [ToolCall::make('skill', 'load', ['name' => 'csv-check'])]),
             new ToolCallMessage(tools: [
@@ -33,55 +33,73 @@ class SkillEvaluatorExecutionTest extends TestCase
                 ToolCall::make('skill_script_prepare', 'extra', ['name' => 'rollback-plan']),
             ]),
             new ToolCallMessage(tools: [ToolCall::make('bash', 'report', [
-                'command' => 'printf completed > '.escapeshellarg($fixture->root.'/report.md'),
+                'command' => 'printf completed > '.escapeshellarg($reportFile),
             ])]),
             new AssistantMessage('The report is ready.'),
         );
 
-        $output = (new SessionSkillEvaluator($provider))->run([
-            'fixture' => $fixture,
-            'prompt' => 'Check the orders and write a report.',
-            'mode' => $mode,
-            'captureArtifacts' => static fn (): array => [
-                'report was generated' => is_file($fixture->root.'/report.md')
-                    && file_get_contents($fixture->root.'/report.md') === 'completed',
-            ],
-        ]);
-
-        $trajectory = Trajectory::fromMessages($output['messages']);
+        try {
+            $trajectory = (new SessionSkillEvaluator($provider))->run([
+                'repository' => $fixture->repository,
+                'prompt' => 'Check the orders and write a report.',
+                'onToolCalled' => $fixture->recordPreparation(...),
+            ]);
+            foreach ($trajectory->toolCalls('skill_script_prepare') as $call) {
+                $directory = json_decode($call->getResult(), true, flags: JSON_THROW_ON_ERROR)['directory'];
+                $this->assertDirectoryExists($directory);
+            }
+            $this->assertSame('completed', file_get_contents($reportFile));
+        } finally {
+            $fixture->cleanUp();
+            unlink($reportFile);
+        }
 
         $this->assertSame('The report is ready.', $trajectory->finalAnswer());
-        $this->assertNull($output['failure']);
-        $this->assertSame($storage, $output['storage']);
-        $this->assertSame('fake', $output['model']);
-        $this->assertNotEmpty($output['instructions']['csv-check']);
-        $this->assertCount(7, $output['instructions']);
-        $this->assertSame([
-            'complete preparation and script artifacts' => true,
-            'report was generated' => true,
-        ], $output['artifacts']);
-        $this->assertStringContainsString('The report is ready.', $output['transcript']);
-        $this->assertStringContainsString('Available skills:', $output['guidelines']);
-        $provider->assertMethodCallCount($mode, 4);
+        $provider->assertMethodCallCount('chat', 4);
         $provider->assertToolsConfigured(['bash', 'skill', 'skill_resource', 'skill_script_prepare']);
-        $this->assertDirectoryDoesNotExist($fixture->root);
+
+        if ($fixture->root !== null) {
+            $this->assertDirectoryDoesNotExist($fixture->root);
+        }
 
         foreach ($trajectory->toolCalls('skill_script_prepare') as $call) {
             $directory = json_decode($call->getResult(), true, flags: JSON_THROW_ON_ERROR)['directory'];
             $this->assertDirectoryDoesNotExist($directory);
         }
 
-        $restored = unserialize(serialize($output));
-        $this->assertSame($trajectory->toTranscript(), Trajectory::fromMessages($restored['messages'])->toTranscript());
+        $restored = unserialize(serialize($trajectory));
+        $this->assertSame($trajectory->toTranscript(), $restored->toTranscript());
     }
 
-    public static function executionModes(): iterable
+    public static function storages(): iterable
     {
-        foreach (['filesystem', 'database'] as $storage) {
-            foreach (['chat', 'stream'] as $mode) {
-                yield $storage.' '.$mode => [$storage, $mode];
-            }
+        yield 'filesystem' => ['filesystem'];
+        yield 'database' => ['database'];
+    }
+
+    /** @dataProvider storages */
+    public function test_multiple_requests_keep_supplied_text_in_the_same_conversation(string $storage): void
+    {
+        $provider = new FakeAIProvider(new AssistantMessage('Text received.'), new AssistantMessage('Text report.'));
+        $prompts = ['Here is the text: London has many parks.', 'Use the text-stats skill.'];
+        $fixture = new SkillFixture(['text-stats' => $storage]);
+        $fixture->setUp();
+
+        try {
+            $trajectory = (new SessionSkillEvaluator($provider))->run([
+                'repository' => $fixture->repository,
+                'prompt' => $prompts,
+                'onToolCalled' => $fixture->recordPreparation(...),
+            ]);
+        } finally {
+            $fixture->cleanUp();
         }
+
+        $this->assertSame($prompts, $trajectory->userMessages());
+        $records = $provider->getRecorded();
+        $this->assertCount(2, $records);
+        $this->assertNotEmpty(array_filter($records[1]->messages, static fn (Message $message): bool =>
+            $message instanceof UserMessage && $message->getContent() === $prompts[0]));
     }
 
     public function test_reusing_an_evaluator_starts_an_independent_conversation_for_each_item(): void
@@ -89,25 +107,33 @@ class SkillEvaluatorExecutionTest extends TestCase
         $provider = new FakeAIProvider(new AssistantMessage('First answer.'), new AssistantMessage('Second answer.'));
         $evaluator = new SessionSkillEvaluator($provider);
 
-        foreach (['chat' => 'First request.', 'stream' => 'Second request.'] as $mode => $prompt) {
-            $output = $evaluator->run([
-                'fixture' => new SkillFixture('risk-review', 'filesystem'),
-                'prompt' => $prompt,
-                'mode' => $mode,
-            ]);
-            $this->assertSame([$prompt], Trajectory::fromMessages($output['messages'])->userMessages());
+        foreach (['First request.', 'Second request.'] as $prompt) {
+            $fixture = new SkillFixture(['risk-review' => 'filesystem']);
+            $fixture->setUp();
+
+            try {
+                $trajectory = $evaluator->run([
+                    'repository' => $fixture->repository,
+                    'prompt' => $prompt,
+                ]);
+                $this->assertSame([$prompt], $trajectory->userMessages());
+            } finally {
+                $fixture->cleanUp();
+            }
         }
 
-        foreach ($provider->getRecorded() as $request) {
-            $this->assertCount(1, $request->messages);
-            $this->assertInstanceOf(UserMessage::class, $request->messages[0]);
+        foreach ($provider->getRecorded() as $record) {
+            $this->assertCount(1, $record->messages);
+            $this->assertInstanceOf(UserMessage::class, $record->messages[0]);
         }
     }
 
-    /** @dataProvider executionModes */
-    public function test_provider_errors_are_sanitized_and_partial_preparations_are_cleaned(string $storage, string $mode): void
+    /** @dataProvider storages */
+    public function test_provider_errors_are_sanitized_and_the_caller_can_clean_preparations(string $storage): void
     {
-        $fixture = new SkillFixture('risk-review', $storage);
+        $fixture = new SkillFixture(['risk-review' => $storage, 'rollback-plan' => $storage]);
+        $fixture->setUp();
+        $inputFile = $fixture->createFile('Input for the interrupted run.');
         $prepare = ToolCall::make('skill_script_prepare', 'extra', ['name' => 'rollback-plan']);
         $provider = new class(new ToolCallMessage(tools: [$prepare])) extends FakeAIProvider {
             protected function nextResponse(): Message
@@ -122,9 +148,9 @@ class SkillEvaluatorExecutionTest extends TestCase
 
         try {
             (new SessionSkillEvaluator($provider))->run([
-                'fixture' => $fixture,
+                'repository' => $fixture->repository,
                 'prompt' => 'Plan a recovery.',
-                'mode' => $mode,
+                'onToolCalled' => $fixture->recordPreparation(...),
             ]);
             $this->fail('Expected an execution error.');
         } catch (RuntimeException $exception) {
@@ -133,36 +159,39 @@ class SkillEvaluatorExecutionTest extends TestCase
                 $exception->getMessage(),
             );
             $this->assertNull($exception->getPrevious());
+        } finally {
+            $fixture->cleanUp();
         }
 
         $directory = json_decode($prepare->getResult(), true, flags: JSON_THROW_ON_ERROR)['directory'];
         $this->assertDirectoryDoesNotExist($directory);
-        $this->assertDirectoryDoesNotExist($fixture->root);
+        $this->assertFileDoesNotExist($inputFile);
+
+        if ($fixture->root !== null) {
+            $this->assertDirectoryDoesNotExist($fixture->root);
+        }
     }
 
-    public function test_artifact_capture_errors_still_clean_the_fixture(): void
+    public function test_session_leaves_the_fixture_available_for_the_caller(): void
     {
-        $fixture = new SkillFixture('risk-review', 'filesystem');
-        $evaluator = new SessionSkillEvaluator(new FakeAIProvider(new AssistantMessage('Done.')));
+        $fixture = new SkillFixture(['risk-review' => 'filesystem']);
+        $fixture->setUp();
 
         try {
-            $evaluator->run([
-                'fixture' => $fixture,
+            $trajectory = (new SessionSkillEvaluator(new FakeAIProvider(new AssistantMessage('Done.'))))->run([
+                'repository' => $fixture->repository,
                 'prompt' => 'Review this plan.',
-                'mode' => 'chat',
-                'captureArtifacts' => static function (): array {
-                    throw new RuntimeException('Sensitive artifact contents.');
-                },
             ]);
-            $this->fail('Expected an execution error.');
-        } catch (RuntimeException $exception) {
-            $this->assertSame('Evaluation execution error: RuntimeException', $exception->getMessage());
+            $this->assertInstanceOf(Trajectory::class, $trajectory);
+            $this->assertDirectoryExists($fixture->root);
+        } finally {
+            $fixture->cleanUp();
         }
 
         $this->assertDirectoryDoesNotExist($fixture->root);
     }
 
-    public function test_exceeding_the_tool_limit_records_a_behavior_failure(): void
+    public function test_exceeding_the_tool_limit_reaches_the_native_runner_as_an_error(): void
     {
         $provider = new FakeAIProvider();
 
@@ -172,16 +201,20 @@ class SkillEvaluatorExecutionTest extends TestCase
             ]));
         }
 
-        $fixture = new SkillFixture('risk-review', 'filesystem');
-        $output = (new SessionSkillEvaluator($provider))->run([
-            'fixture' => $fixture,
-            'prompt' => 'Review this plan.',
-            'mode' => 'chat',
-        ]);
+        $fixture = new SkillFixture(['risk-review' => 'filesystem']);
+        $fixture->setUp();
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Evaluation execution error: NeuronAI\\Exceptions\\ToolRunsExceededException');
 
-        $this->assertSame('The agent exceeded the tool execution limit.', $output['failure']);
-        $this->assertNotEmpty(Trajectory::fromMessages($output['messages'])->toolCalls('skill'));
-        $this->assertDirectoryDoesNotExist($fixture->root);
+        try {
+            (new SessionSkillEvaluator($provider))->run([
+                'repository' => $fixture->repository,
+                'prompt' => 'Review this plan.',
+            ]);
+        } finally {
+            $fixture->cleanUp();
+            $this->assertDirectoryDoesNotExist($fixture->root);
+        }
     }
 
     public function test_all_evaluators_declare_execution_sources_and_fixture_resources_as_cache_dependencies(): void
@@ -200,7 +233,7 @@ class SkillEvaluatorExecutionTest extends TestCase
                 }
             }
 
-            $this->assertNotContains($root.'/evaluators/Assertions/EvidenceIsValid.php', $dependencies);
+            $this->assertNotContains($root.'/evaluators/Assertions/ScriptsWereExecuted.php', $dependencies);
         }
     }
 }

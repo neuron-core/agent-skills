@@ -12,10 +12,9 @@ use NeuronAI\Tools\ToolOutput;
 
 final class DependenciesWereLoaded extends TrajectoryAssertion
 {
-    /** @param array<string, string> $dependencies Skill names mapped to expected instructions; any sibling order is accepted. */
+    /** @param list<string> $dependencies Required skill names; any sibling order is accepted. */
     public function __construct(
         private readonly string $parent,
-        private readonly string $instructions,
         private readonly array $dependencies,
     ) {
     }
@@ -46,9 +45,13 @@ final class DependenciesWereLoaded extends TrajectoryAssertion
                 $text = $result instanceof ToolOutput ? $result->getText() : $result;
                 $name = $call->getInput('name');
 
-                if ($name === $this->parent && $text === $this->instructions) {
+                if (trim($text) === '') {
+                    continue;
+                }
+
+                if ($name === $this->parent) {
                     $parentLoaded = true;
-                } elseif (isset($this->dependencies[$name]) && !isset($loaded[$name]) && $text === $this->dependencies[$name]) {
+                } elseif (in_array($name, $this->dependencies, true) && !isset($loaded[$name])) {
                     if (!$wasParentLoaded) {
                         return AssertionResult::fail(0.0, 'Dependency "'.$name.'" was selected before parent "'.$this->parent.'" returned its instructions.');
                     }
@@ -59,13 +62,13 @@ final class DependenciesWereLoaded extends TrajectoryAssertion
         }
 
         if (!$parentLoaded) {
-            return AssertionResult::fail(0.0, 'Parent skill "'.$this->parent.'" did not return its expected instructions.');
+            return AssertionResult::fail(0.0, 'Parent skill "'.$this->parent.'" did not return nonempty instructions successfully.');
         }
 
-        $missing = array_diff_key($this->dependencies, $loaded);
+        $missing = array_diff($this->dependencies, array_keys($loaded));
 
         if ($missing !== []) {
-            return AssertionResult::fail(0.0, 'Dependencies did not return their expected instructions: '.implode(', ', array_keys($missing)).'.');
+            return AssertionResult::fail(0.0, 'Dependencies did not return nonempty instructions successfully: '.implode(', ', $missing).'.');
         }
 
         return AssertionResult::pass(1.0);

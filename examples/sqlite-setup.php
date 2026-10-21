@@ -46,48 +46,44 @@ $textStatsDocument = <<<'MARKDOWN'
 name: text-stats
 description: Count words, lines and characters when the user requests text statistics.
 ---
+
 # Text statistics
 
-1. Run `scripts/analyze.py`, supplying the exact text through stdin.
-2. Inspect its JSON output and verify the word, line and character counts.
-   Supply that JSON through stdin to `scripts/report.py`.
-3. Report the JSON returned by `report.py` after successful execution.
+1. Read `config/analysis.yaml` for the `max_words` limit.
+2. Run `python3 scripts/analyze.py --max-words <max_words>`, supplying the exact text through stdin.
+3. Inspect the analysis JSON, then supply it through stdin to `python3 scripts/report.py`.
+4. Return the report's PASS or FAIL result and its word count and limit.
 MARKDOWN;
 
 $textStatsScript = <<<'PYTHON'
+import argparse
 import json
 import sys
-from pathlib import Path
 
-config_path = Path(__file__).resolve().parent.parent / "config" / "statistics.json"
-config = json.loads(config_path.read_text(encoding="utf-8"))
+parser = argparse.ArgumentParser()
+parser.add_argument("--max-words", type=int, required=True)
+args = parser.parse_args()
 text = sys.stdin.buffer.read().decode("utf-8")
-characters = len(text) if config["include_whitespace"] else sum(not char.isspace() for char in text)
 print(json.dumps({
     "words": len(text.split()),
     "lines": len(text.splitlines()),
-    "characters": characters,
+    "characters": len(text),
+    "max_words": args.max_words,
 }))
 PYTHON;
 
 $textStatsReport = <<<'PYTHON'
 import json
 import sys
-from pathlib import Path
 
-
-config_path = Path(__file__).resolve().parent.parent / "config" / "statistics.json"
-config = json.loads(config_path.read_text(encoding="utf-8"))
 counts = json.loads(sys.stdin.buffer.read().decode("utf-8"))
-print(json.dumps({metric: counts[metric] for metric in config["metrics"]}))
+status = "PASS" if counts["words"] <= counts["max_words"] else "FAIL"
+print(f"{status}: {counts['words']} words, limit {counts['max_words']}.")
 PYTHON;
 
-$textStatsConfig = <<<'JSON'
-{
-    "include_whitespace": true,
-    "metrics": ["words", "lines", "characters"]
-}
-JSON;
+$textStatsConfig = <<<'YAML'
+max_words: 12
+YAML;
 
 $pdo = createDemoDatabase($database);
 $insert = $pdo->prepare('INSERT INTO skills (skill_identifier, path, content) VALUES (?, ?, ?)');
@@ -102,7 +98,7 @@ $insert = $pdo->prepare('INSERT INTO skills (skill_identifier, path, content) VA
 $insert->execute(['text-stats', 'SKILL.md', $textStatsDocument."\n"]);
 $insert->execute(['text-stats', 'scripts/analyze.py', $textStatsScript."\n"]);
 $insert->execute(['text-stats', 'scripts/report.py', $textStatsReport."\n"]);
-$insert->execute(['text-stats', 'config/statistics.json', $textStatsConfig."\n"]);
+$insert->execute(['text-stats', 'config/analysis.yaml', $textStatsConfig."\n"]);
 $pdo->commit();
 
 echo 'Prepared SQLite skills database: '.$textStatsDatabase.PHP_EOL;

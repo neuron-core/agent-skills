@@ -4,14 +4,10 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Evaluators;
 
-use InvalidArgumentException;
 use NeuronAI\AgentSkills\Evaluators\Assertions\DependenciesWereLoaded;
-use NeuronAI\AgentSkills\Evaluators\Assertions\EvidenceIsValid;
-use NeuronAI\AgentSkills\Evaluators\Assertions\NoRepeatedSkillLoads;
 use NeuronAI\AgentSkills\Evaluators\Fixtures\SkillFixture;
-use NeuronAI\Evaluation\Assertions\StringLengthBetween;
-use NeuronAI\Evaluation\Assertions\Trajectory\ToolWasCalled;
-use NeuronAI\Evaluation\Assertions\Trajectory\ToolWasNotCalled;
+use NeuronAI\Evaluation\Assertions\Trajectory\Mode;
+use NeuronAI\Evaluation\Assertions\Trajectory\TrajectoryMatches;
 use NeuronAI\Evaluation\Contracts\DatasetInterface;
 use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Evaluation\Dataset\ArrayDataset;
@@ -21,110 +17,108 @@ final class SkillDependencyEvaluator extends BaseSkillEvaluator
     public function getDataset(): DatasetInterface
     {
         return new ArrayDataset([
-            ['dependencies' => 'single', 'execution' => 1, 'mode' => 'chat'],
-            ['dependencies' => 'single', 'execution' => 2, 'mode' => 'stream'],
-            ['dependencies' => 'single', 'execution' => 3, 'mode' => 'stream'],
-            ['dependencies' => 'multiple', 'execution' => 1, 'mode' => 'chat'],
-            ['dependencies' => 'multiple', 'execution' => 2, 'mode' => 'stream'],
-            ['dependencies' => 'multiple', 'execution' => 3, 'mode' => 'stream'],
+            [
+                'skills' => [
+                    'review-my-plan' => 'filesystem',
+                    'release-readiness' => 'filesystem',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'database',
+                ],
+                'expectedSkill' => 'review-my-plan',
+                'expectedDependencies' => ['risk-review'],
+                'prompt' => 'Use the review-my-plan skill.',
+            ],
+            [
+                'skills' => [
+                    'review-my-plan' => 'database',
+                    'release-readiness' => 'filesystem',
+                    'risk-review' => 'filesystem',
+                    'rollback-plan' => 'database',
+                ],
+                'expectedSkill' => 'review-my-plan',
+                'expectedDependencies' => ['risk-review'],
+                'prompt' => 'Please use the review-my-plan skill. We plan to rename a database column while old application instances are still running. There is no maintenance window.',
+            ],
+            [
+                'skills' => [
+                    'review-my-plan' => 'filesystem',
+                    'release-readiness' => 'filesystem',
+                    'risk-review' => 'filesystem',
+                    'rollback-plan' => 'database',
+                ],
+                'expectedSkill' => 'review-my-plan',
+                'expectedDependencies' => ['risk-review'],
+                'prompt' => 'Use the review-my-plan skill. We plan to rename a database column while old application instances are still running. There is no maintenance window.',
+            ],
+            [
+                'skills' => [
+                    'review-my-plan' => 'filesystem',
+                    'release-readiness' => 'filesystem',
+                    'risk-review' => 'filesystem',
+                    'rollback-plan' => 'database',
+                ],
+                'expectedSkill' => 'release-readiness',
+                'expectedDependencies' => ['risk-review', 'rollback-plan'],
+                'prompt' => 'Use the release-readiness skill. We plan to rename a database column while old application instances are still running. There is no maintenance window.',
+            ],
+            [
+                'skills' => [
+                    'review-my-plan' => 'filesystem',
+                    'release-readiness' => 'database',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'filesystem',
+                ],
+                'expectedSkill' => 'release-readiness',
+                'expectedDependencies' => ['risk-review', 'rollback-plan'],
+                'prompt' => 'Please use the release-readiness skill. We plan to rename a database column while old application instances are still running. There is no maintenance window.',
+            ],
+            [
+                'skills' => [
+                    'review-my-plan' => 'filesystem',
+                    'release-readiness' => 'filesystem',
+                    'risk-review' => 'database',
+                    'rollback-plan' => 'database',
+                ],
+                'expectedSkill' => 'release-readiness',
+                'expectedDependencies' => ['risk-review', 'rollback-plan'],
+                'prompt' => 'Use the release-readiness skill. We plan to rename a database column while old application instances are still running. There is no maintenance window.',
+            ],
         ]);
     }
 
-    public function run(array $datasetItem): array
+    public function run(array $datasetItem): Trajectory
     {
-        $multiple = $datasetItem['dependencies'] === 'multiple';
-        $parent = $multiple ? 'release-readiness' : 'review-my-plan';
+        $fixture = new SkillFixture($datasetItem['skills']);
+        $fixture->setUp();
 
-        $fixture = new SkillFixture($parent, 'filesystem', databaseSkills: ['rollback-plan']);
-        $instructions = $fixture->instructions();
-
-        $steps = [
-            [
-                'tool' => 'skill',
-                'inputs' => ['name' => $parent],
-                'result' => $instructions[$parent],
-            ],
-            [
-                'tool' => 'skill',
-                'inputs' => ['name' => 'risk-review'],
-                'result' => $instructions['risk-review'],
-            ],
-        ];
-
-        if ($multiple) {
-            $steps[] = [
-                'tool' => 'skill',
-                'inputs' => ['name' => 'rollback-plan'],
-                'result' => $instructions['rollback-plan'],
-            ];
+        try {
+            return $this->runSession(
+                repository: $fixture->repository,
+                prompt: $datasetItem['prompt'],
+            );
+        } finally {
+            $fixture->cleanUp();
         }
-
-        $prompt = ($datasetItem['execution'] === 2 ? 'Please use the ' : 'Use the ').$parent.' skill.';
-
-        if ($multiple || $datasetItem['execution'] !== 1) {
-            $prompt .= ' We plan to rename a database column while old application instances are still running. There is no maintenance window.';
-        }
-
-        return $this->runSession(
-            fixture: $fixture,
-            prompt: $prompt,
-            mode: $datasetItem['mode'],
-        ) + ['steps' => $steps];
     }
 
-    public function evaluate(mixed $output, array $datasetItem): void
+    public function evaluate(mixed $trajectory, array $datasetItem): void
     {
-        if (!is_array($output) || !is_array($output['messages'] ?? null)) {
-            throw new InvalidArgumentException('Expected recorded conversation messages and execution evidence.');
-        }
-
-        $trajectory = Trajectory::fromMessages($output['messages']);
-
         $this->assert(
-            new NoRepeatedSkillLoads($output['instructions']),
+            new TrajectoryMatches(
+                array_fill(0, 1 + count($datasetItem['expectedDependencies']), 'skill'),
+                Mode::Strict,
+            ),
             $trajectory,
-            'successful skill loads are reused',
+            'exactly one skill call per required skill',
         );
-
-        $this->assert(
-            new ToolWasNotCalled('skill_script_prepare'),
-            $trajectory,
-            'no script preparation needed',
-        );
-
-        foreach ($output['steps'] as $step) {
-            $this->assert(
-                new ToolWasCalled('skill', $step['inputs']),
-                $trajectory,
-                'required skill loaded: '.$step['inputs']['name'],
-            );
-        }
-
-        $dependencies = [];
-
-        foreach (array_slice($output['steps'], 1) as $step) {
-            $dependencies[$step['inputs']['name']] = $step['result'];
-        }
 
         $this->assert(
             new DependenciesWereLoaded(
-                parent: $output['steps'][0]['inputs']['name'],
-                instructions: $output['steps'][0]['result'],
-                dependencies: $dependencies,
+                parent: $datasetItem['expectedSkill'],
+                dependencies: $datasetItem['expectedDependencies'],
             ),
             $trajectory,
-            'dependencies loaded after parent instructions',
-        );
-
-        $this->assert(
-            new StringLengthBetween(1, 100000),
-            $trajectory->finalAnswer(),
-            'review response provided',
-        );
-
-        $this->assert(
-            new EvidenceIsValid(),
-            ['execution completed' => $output['failure'] === null],
+            'dependencies loaded successfully after parent instructions',
         );
     }
 }

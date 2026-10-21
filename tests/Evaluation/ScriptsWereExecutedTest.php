@@ -16,12 +16,13 @@ class ScriptsWereExecutedTest extends TestCase
 {
     public function test_requires_the_script_command_successful_exit_and_expected_output(): void
     {
-        $rule = new ScriptsWereExecuted('example', 'Read reference.', 'references/run.md', 'Run script.', ['scripts/check.php' => 'TOKEN']);
+        $rule = new ScriptsWereExecuted('example', ['scripts/check.py' => 'TOKEN'], 'references/run.md');
         $calls = [
             ToolCall::make('skill', 'load', ['name' => 'example'])->setResult('Read reference.'),
             ToolCall::make('skill_resource', 'read', ['name' => 'example', 'path' => 'references/run.md'])->setResult('Run script.'),
             ToolCall::make('skill_script_prepare', 'prepare', ['name' => 'example'])->setResult(['directory' => '/tmp/example', 'files' => []]),
-            ToolCall::make('bash', 'execute', ['command' => 'php scripts/check.php'])->setResult(['exit_code' => 0, 'output' => 'TOKEN']),
+            ToolCall::make('bash', 'execute', ['command' => 'python3 scripts/check.py', 'working_directory' => '/tmp/example'])
+                ->setResult(['exit_code' => 0, 'output' => 'TOKEN']),
         ];
         $messages = [];
         foreach ($calls as $call) {
@@ -35,7 +36,11 @@ class ScriptsWereExecutedTest extends TestCase
         $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
         $calls[3]->setResult(['exit_code' => 0, 'output' => 'TOKEN'])->setInputs(['command' => 'echo TOKEN']);
         $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
-        $calls[3]->setInputs(['command' => 'php scripts/check.php'])->setResult(ToolOutput::error('TOKEN'));
+        $calls[3]->setInputs(['command' => 'python3 scripts/check.py', 'working_directory' => '/tmp/example'])
+            ->setResult(ToolOutput::error('TOKEN'));
+        $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
+        $calls[3]->setResult(['exit_code' => 0, 'output' => 'TOKEN'])
+            ->setInputs(['command' => 'python3 scripts/check.py', 'working_directory' => '/tmp/unprepared']);
         $this->assertFalse($rule->evaluate(Trajectory::fromMessages($messages))->passed);
     }
 }
