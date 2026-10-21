@@ -156,6 +156,15 @@ which appears only in that database reference.
 
 ## SQLite setup and local verification
 
+### Live skill evaluations
+
+The evaluation suite now lives in [`evaluators/`](../evaluators/README.md) and
+uses Neuron's native runner. Run `composer evaluate` from the project root.
+It uses `examples/.env` and makes real model API calls. Offline checks remain
+available through `composer check`.
+
+### Database setup
+
 `sqlite-setup.php` creates two ignored local databases. It accepts optional paths:
 
 ```sh

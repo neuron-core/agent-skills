@@ -1,0 +1,14 @@
+{
+  "required_columns": [
+    "order_id",
+    "date",
+    "customer",
+    "total",
+    "status"
+  ],
+  "statuses": [
+    "paid",
+    "cancelled",
+    "refunded"
+  ]
+}

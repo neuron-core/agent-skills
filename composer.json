@@ -24,12 +24,14 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "NeuronAI\\AgentSkills\\Tests\\": "tests/"
+            "NeuronAI\\AgentSkills\\Tests\\": "tests/",
+            "NeuronAI\\AgentSkills\\Evaluators\\": "evaluators/"
         }
     },
     "scripts": {
         "test": "phpunit",
         "analyse": "phpstan analyse --memory-limit=1G",
+        "evaluate": "neuron evaluation --path=evaluators --autoload-file=evaluators/bootstrap.php --verbose",
         "check": [
             "@test",
             "@analyse"
