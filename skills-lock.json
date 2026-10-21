@@ -103,6 +103,71 @@
       "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
       "computedHash": "ac2c94885f34ff8492dc12aa4543182f661f32ea1722b8d6b6c2c7045af33ae3"
     },
+    "neuron-agent": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "b309aeec2381d961b2caafe09523ee1274536e710017a2cfe8e633ee3db0d6b4"
+    },
+    "neuron-evaluation": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "066f6d0ee593c650f3e1764f46a276a3cb1f30ac8dbe47b357a65d13b38be29e"
+    },
+    "neuron-frontend-integration": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "abf516bda3581e395ad805f50e316a3a83d5937d6d02c12571751bc58c8c2b39"
+    },
+    "neuron-laravel-integration": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "904d6829c0f987b0effe01ee248fb1c2e5f602e60c27a35bbaba8b494d043aa8"
+    },
+    "neuron-monitoring": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "eb11ca1f461c197c60c19e5dcf54d585970284bdf1d8bfc5990c4ed1c037a4be"
+    },
+    "neuron-rag": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "a267279b76ee3cc915efec4afea39fa420ab5e386e42d75884da746ba12621e2"
+    },
+    "neuron-streaming": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "19d7f85bb0b4ab5a14ea08ee8d7436f59e8dbc3639395ac1cdab6836187207f7"
+    },
+    "neuron-structured-output": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "8e5f5030872f65618138a1551be3b6f3b20da456034eb16592a090c375705423"
+    },
+    "neuron-symfony-integration": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "13a2ad7149f1f3b8256e5aeb1ad09517f40fb156e95a8a83dacf830b8acdeaac"
+    },
+    "neuron-test": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "46ff442aa8042e10a7b41b641e4ab63507a786062254ade84e71fc414c76a118"
+    },
+    "neuron-tool": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "66a7069b2933c1b5fd2598d0c26e099634c637719965cfde417f3a6ca82a03d9"
+    },
+    "neuron-tool-approval": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "77ecc00e0aacdef04b21d17cac00af74efb08e8cbeb0b6d4acd6fd8ff95ca3dd"
+    },
+    "neuron-workflow": {
+      "source": "./vendor/neuron-core/neuron-ai/skills",
+      "sourceType": "local",
+      "computedHash": "3d05aa51197fdbb932e51ba956c85665a4c09684c6742b1b0d852ae1464674dd"
+    },
     "pr": {
       "source": "mattpocock/skills",
       "sourceType": "github",
