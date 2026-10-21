@@ -14,7 +14,7 @@ fallback model is `gpt-5.4-nano`. The suite makes paid API requests.
 
 - `BaseSkillEvaluator.php`: abstract base with provider creation, session execution
   and cache dependencies.
-- The six concrete `*Evaluator.php` classes: scenarios discovered in alphabetical order.
+- The seven concrete `*Evaluator.php` classes: scenarios discovered in alphabetical order.
 - `Assertions/`: custom assertions shared by the evaluators.
 - `Fixtures/SkillFixture.php`: fixture setup and cleanup.
 - `Fixtures/skills/`: skill documents and resources used by the scenarios.
@@ -63,7 +63,8 @@ filesystem fixture and directories created by script preparation.
 
 | Evaluator | Variants | What it measures |
 | --- | --- | --- |
-| `SkillDiscoveryEvaluator` | English requests for risk assessment, recovery procedures and ticket prioritization, each on filesystem and SQLite | Choosing and loading the relevant skill from three alternatives without its name appearing in the request. |
+| `SkillDiscoveryEvaluator` | English requests for risk assessment and recovery procedures, each on filesystem and SQLite | Choosing and loading the relevant skill from three alternatives without its name appearing in the request; exactly one `skill` call. |
+| `SkillDiscoveryWithResourceEvaluator` | Two English requests for ticket prioritization, each on filesystem and SQLite | Discovering `ticket-triage`, then reading its required policy; exactly `skill`, then `skill_resource`. |
 | `SkillLoadingEvaluator` | Three requests for `risk-review`, each on filesystem and SQLite | Exactly one `skill` call with the requested name and a successful nonempty result. |
 | `SkillResourceEvaluator` | P1 outage, P2 blocked payment, P3 export workaround, each on filesystem and SQLite | Reading the policy after the skill and returning the expected priority. |
 | `ScriptExecutionEvaluator` | Filesystem and SQLite; valid orders, negative amount, duplicate ID | Reading import requirements, preparing the skill, executing the validator and obtaining the expected findings. |
@@ -98,9 +99,13 @@ Loading, discovery and resource cases run every request with the expected skill 
 then on SQLite, keeping the other catalog entries unchanged.
 Discovery covers three tasks, each with two English phrasings. These requests
 describe the work without naming any skill.
-The assertions require exactly one tool call, loading the expected skill with a
-successful nonempty result. A plausible final answer or loading another skill is
-not enough. Task-specific outcome checks remain in the other evaluators.
+The eight risk and recovery cases require exactly one tool call, loading the
+expected skill with a successful nonempty result. The four ticket cases live in
+`SkillDiscoveryWithResourceEvaluator` and require exactly `skill`, then
+`skill_resource`, successfully reading `references/priorities.md` after the skill's
+instructions return. Both evaluators reject extra calls and use the same checks
+for every item in their dataset. Task-specific outcome checks remain in the
+dedicated evaluators.
 
 The validation cases pass ordinary orders CSV files through user requests and
 check row-level errors. In the text workflow, the second script consumes the first
@@ -123,9 +128,10 @@ caller cleans its fixture in `finally`.
 An optional tool-call observer lets fixtures record script preparations for cleanup, including
 results that a later provider error prevents from entering chat history.
 
-The loading and discovery evaluators use native `TrajectoryMatches` in strict mode
-for their exact single-call sequence and `SkillWasLoaded` for the expected name
-and successful result. The resource evaluator requires exactly `skill`, then
+The loading and both discovery evaluators use native `TrajectoryMatches` in strict
+mode for their exact sequence and `SkillWasLoaded` for the expected name and
+successful result. Discovery with a resource also uses `ResourceWasRead` for the
+required policy. The resource evaluator requires exactly `skill`, then
 `skill_resource`; `ResourceWasRead` checks successful nonempty results and requires
 the skill result before the resource is selected. The dependency evaluator checks
 the exact number of skill calls and successful loads of all required skills after

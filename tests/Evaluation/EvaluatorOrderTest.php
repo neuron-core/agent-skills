@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace NeuronAI\AgentSkills\Tests\Evaluation;
 
 use NeuronAI\AgentSkills\Evaluators\SkillResourceEvaluator;
+use NeuronAI\AgentSkills\Evaluators\SkillDiscoveryWithResourceEvaluator;
 use NeuronAI\AgentSkills\Evaluators\ScriptWorkflowEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDependencyEvaluator;
 use NeuronAI\Chat\Messages\AssistantMessage;
@@ -49,6 +50,29 @@ class EvaluatorOrderTest extends TestCase
         $this->assertFalse($this->passes([[$parent]], $steps));
         $child->setResult(ToolOutput::error('Unavailable'));
         $this->assertFalse($this->passes([[$parent], [$child]], $steps));
+    }
+
+    public function test_discovery_with_resource_requires_the_skill_result_before_selecting_the_reference(): void
+    {
+        $load = ToolCall::make('skill', 'load', ['name' => 'ticket-triage'])->setResult('Read the policy.');
+        $read = ToolCall::make('skill_resource', 'read', ['name' => 'ticket-triage', 'path' => 'references/priorities.md'])
+            ->setResult('Policy contents.');
+        $evaluator = new SkillDiscoveryWithResourceEvaluator();
+        $item = ['expectedSkill' => 'ticket-triage'];
+
+        $sequential = Trajectory::fromMessages([
+            new ToolCallMessage(tools: [$load]),
+            new ToolResultMessage([$load]),
+            new ToolCallMessage(tools: [$read]),
+            new ToolResultMessage([$read]),
+        ]);
+        $this->assertTrue($evaluator->performEvaluation($sequential, $item)->isPassed());
+
+        $batched = Trajectory::fromMessages([
+            new ToolCallMessage(tools: [$load, $read]),
+            new ToolResultMessage([$load, $read]),
+        ]);
+        $this->assertFalse($evaluator->performEvaluation($batched, $item)->isPassed());
     }
 
     public function test_independent_dependencies_can_be_loaded_together_in_either_order(): void

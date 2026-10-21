@@ -133,10 +133,9 @@ class SkillToolkitTest extends TestCase
         $systemPrompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
-        $this->assertStringContainsString('Use `skill` for skills requested by the user or relevant to the task.', $systemPrompt);
-        $this->assertStringContainsString('Follow the returned instructions to completion.', $systemPrompt);
-        $this->assertStringContainsString('If instructions request another skill, call `skill` with that skill\'s name next.', $systemPrompt);
-        $this->assertSame('Load a skill\'s complete instructions by name. Do not reload a successfully loaded skill; follow its returned instructions.', $skillTool->getDescription());
+        $this->assertStringContainsString('For the user\'s requested task, load matching or explicitly named skills with `skill` and follow their instructions to completion.', $systemPrompt);
+        $this->assertStringContainsString('Load each skill once. If its instructions call another skill, use that new name in the next `skill` call.', $systemPrompt);
+        $this->assertSame('Load a skill\'s complete instructions by name.', $skillTool->getDescription());
         $this->assertStringNotContainsString('file://', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
