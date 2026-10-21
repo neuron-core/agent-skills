@@ -89,42 +89,6 @@ final class SkillDiscoveryEvaluator extends BaseSkillEvaluator
                 'expectedSkill' => 'rollback-plan',
                 'prompt' => 'Prepare a recovery procedure for a failed application deployment. There are no database changes and the previous image is available. Include recovery triggers, restoration steps and checks that service has recovered.',
             ],
-            [
-                'skills' => [
-                    'risk-review' => 'filesystem',
-                    'rollback-plan' => 'database',
-                    'ticket-triage' => 'filesystem',
-                ],
-                'expectedSkill' => 'ticket-triage',
-                'prompt' => 'A customer reports that the service is unavailable to all users, with no workaround. Classify this support ticket by priority and explain the classification.',
-            ],
-            [
-                'skills' => [
-                    'risk-review' => 'filesystem',
-                    'rollback-plan' => 'database',
-                    'ticket-triage' => 'database',
-                ],
-                'expectedSkill' => 'ticket-triage',
-                'prompt' => 'A customer reports that the service is unavailable to all users, with no workaround. Classify this support ticket by priority and explain the classification.',
-            ],
-            [
-                'skills' => [
-                    'risk-review' => 'filesystem',
-                    'rollback-plan' => 'database',
-                    'ticket-triage' => 'filesystem',
-                ],
-                'expectedSkill' => 'ticket-triage',
-                'prompt' => 'All customers are unable to access the service and no workaround is available. What priority should this support incident receive, and why?',
-            ],
-            [
-                'skills' => [
-                    'risk-review' => 'filesystem',
-                    'rollback-plan' => 'database',
-                    'ticket-triage' => 'database',
-                ],
-                'expectedSkill' => 'ticket-triage',
-                'prompt' => 'All customers are unable to access the service and no workaround is available. What priority should this support incident receive, and why?',
-            ],
         ]);
     }
 

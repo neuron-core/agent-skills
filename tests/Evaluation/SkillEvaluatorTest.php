@@ -9,6 +9,7 @@ use NeuronAI\AgentSkills\Evaluators\ScriptExecutionEvaluator;
 use NeuronAI\AgentSkills\Evaluators\ScriptWorkflowEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDependencyEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDiscoveryEvaluator;
+use NeuronAI\AgentSkills\Evaluators\SkillDiscoveryWithResourceEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillLoadingEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillResourceEvaluator;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
@@ -67,16 +68,92 @@ class SkillEvaluatorTest extends TestCase
         }
     }
 
+    public function test_discovery_with_resource_accepts_the_exact_sequence_for_each_request(): void
+    {
+        $evaluator = new SkillDiscoveryWithResourceEvaluator();
+
+        foreach ($evaluator->getDataset()->load() as $item) {
+            $output = $this->recordExecution($item['expectedSkill'], [$item['expectedSkill'], 'skill_resource'], '', $item['skills']);
+            $this->assertTrue($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
+        }
+    }
+
     public function test_discovery_rejects_extra_calls(): void
     {
         $evaluator = new SkillDiscoveryEvaluator();
 
-        foreach ([['bash', 'risk-review'], ['risk-review', 'bash'], ['risk-review', 'risk-review']] as $calls) {
+        foreach ([['bash', 'risk-review'], ['risk-review', 'bash'], ['risk-review', 'skill_script_prepare'], ['risk-review', 'skill_resource']] as $calls) {
             $output = $this->recordExecution('risk-review', $calls, 'Here is the requested assessment.');
             $this->assertFalse($evaluator->performEvaluation(
                 Trajectory::fromMessages($output['messages']),
                 ['expectedSkill' => 'risk-review'],
             )->isPassed());
+        }
+    }
+
+    public function test_discovery_with_resource_rejects_incomplete_reordered_or_extra_calls(): void
+    {
+        $evaluator = new SkillDiscoveryWithResourceEvaluator();
+
+        foreach ([
+            [],
+            ['ticket-triage'],
+            ['skill_resource', 'ticket-triage'],
+            ['ticket-triage', 'ticket-triage', 'skill_resource'],
+            ['ticket-triage', 'skill_resource', 'skill_resource'],
+            ['bash', 'ticket-triage', 'skill_resource'],
+            ['ticket-triage', 'skill_resource', 'bash'],
+            ['risk-review', 'skill_resource'],
+        ] as $calls) {
+            $output = $this->recordExecution('ticket-triage', $calls, 'P1');
+            $this->assertFalse($evaluator->performEvaluation(
+                Trajectory::fromMessages($output['messages']),
+                ['expectedSkill' => 'ticket-triage'],
+            )->isPassed());
+        }
+    }
+
+    public function test_discovery_with_resource_requires_a_successful_read_of_the_exact_path(): void
+    {
+        $evaluator = new SkillDiscoveryWithResourceEvaluator();
+        $item = ['expectedSkill' => 'ticket-triage'];
+
+        foreach (['', '   ', \NeuronAI\Tools\ToolOutput::error('Policy unavailable.')] as $result) {
+            $output = $this->recordExecution('ticket-triage', ['ticket-triage', 'skill_resource'], 'P1');
+            $output['messages'][3]->getToolCalls()[0]->setResult($result);
+            $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
+        }
+
+        $output = $this->recordExecution('ticket-triage', ['ticket-triage', 'skill_resource'], 'P1');
+        $output['messages'][3]->getToolCalls()[0]->setInputs(['name' => 'ticket-triage', 'path' => 'priorities.md']);
+        $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
+    }
+
+    public function test_discovery_rejects_repeated_or_additional_skill_loads(): void
+    {
+        $evaluator = new SkillDiscoveryEvaluator();
+
+        foreach ([['risk-review', 'risk-review'], ['risk-review', 'rollback-plan'], ['rollback-plan', 'risk-review']] as $calls) {
+            $output = $this->recordExecution('risk-review', $calls, 'Here is the requested assessment.');
+            $this->assertFalse($evaluator->performEvaluation(
+                Trajectory::fromMessages($output['messages']),
+                ['expectedSkill' => 'risk-review'],
+            )->isPassed());
+        }
+    }
+
+    public function test_discovery_rejects_missing_empty_or_failed_skill_results(): void
+    {
+        $evaluator = new SkillDiscoveryEvaluator();
+
+        foreach ([null, '', '   ', \NeuronAI\Tools\ToolOutput::error('Skill unavailable.')] as $result) {
+            $load = ToolCall::make('skill', 'load', ['name' => 'risk-review']);
+            if ($result !== null) {
+                $load->setResult($result);
+            }
+
+            $trajectory = Trajectory::fromMessages([new ToolCallMessage(tools: [$load]), new ToolResultMessage([$load])]);
+            $this->assertFalse($evaluator->performEvaluation($trajectory, ['expectedSkill' => 'risk-review'])->isPassed());
         }
     }
 
@@ -204,7 +281,7 @@ class SkillEvaluatorTest extends TestCase
         $this->assertStringContainsString('skill_script_prepare', $result->failures[0]->getMessage());
     }
 
-    public function test_native_discovery_finds_six_evaluators_in_alphabetical_order(): void
+    public function test_native_discovery_finds_seven_evaluators_in_alphabetical_order(): void
     {
         $classes = (new EvaluatorDiscovery())->discover(dirname(__DIR__, 2).'/evaluators');
         $this->assertSame([
@@ -212,6 +289,7 @@ class SkillEvaluatorTest extends TestCase
             ScriptWorkflowEvaluator::class,
             SkillDependencyEvaluator::class,
             SkillDiscoveryEvaluator::class,
+            SkillDiscoveryWithResourceEvaluator::class,
             SkillLoadingEvaluator::class,
             SkillResourceEvaluator::class,
         ], $classes);
@@ -223,7 +301,7 @@ class SkillEvaluatorTest extends TestCase
         $fixture->setUp();
         $messages = [];
         try {
-            [$load, , $prepare] = (new SkillToolkit($fixture->repository))->tools();
+            [$load, $resource, $prepare] = (new SkillToolkit($fixture->repository))->tools();
             foreach ($calls as $index => $name) {
                 if ($name === 'bash') {
                     $tool = new BashTool();
@@ -233,6 +311,10 @@ class SkillEvaluatorTest extends TestCase
                     $tool = $prepare;
                     $toolName = $name;
                     $inputs = ['name' => $skill];
+                } elseif ($name === 'skill_resource') {
+                    $tool = $resource;
+                    $toolName = $name;
+                    $inputs = ['name' => $skill, 'path' => 'references/priorities.md'];
                 } else {
                     $tool = $load;
                     $toolName = 'skill';
