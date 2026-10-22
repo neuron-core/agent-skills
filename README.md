@@ -103,6 +103,9 @@ filesystem-only, database-only or mixed. An empty usable catalog registers none:
 | `skill_resource` | Read one literal `path` from the skill selected by declared `name`; return its full contents as text. |
 | `skill_script_prepare` | Prepare every resource of the skill selected by `name`; return `directory` and relative `files`. |
 
+The `skill` result prefixes nonempty instructions with `Instructions loaded.`;
+the instruction body itself is unchanged.
+
 Skills can also include scripts. Register a separate execution tool, such as
 Neuron's `BashTool`, alongside the toolkit. For every storage source, the agent
 loads the instructions without YAML frontmatter with `skill(name)`, reads necessary references with

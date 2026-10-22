@@ -14,6 +14,7 @@ use NeuronAI\Evaluation\BaseEvaluator;
 use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\Providers\OpenAI\OpenAI;
+use NeuronAI\Providers\OpenAI\Responses\OpenAIResponses;
 use NeuronAI\Tools\Toolkits\FileSystem\BashTool;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -62,14 +63,27 @@ abstract class BaseSkillEvaluator extends BaseEvaluator
     {
         $key = $_ENV['OPENAI_API_KEY'] ?? getenv('OPENAI_API_KEY');
         $model = $_ENV['OPENAI_MODEL'] ?? getenv('OPENAI_MODEL');
+        $effort = $_ENV['OPENAI_REASONING_EFFORT'] ?? getenv('OPENAI_REASONING_EFFORT');
+        $responses = ($_ENV['OPENAI_API'] ?? getenv('OPENAI_API')) === 'responses';
 
         if (!is_string($key) || trim($key) === '') {
             throw new RuntimeException('Set OPENAI_API_KEY in examples/.env or the environment.');
         }
 
-        return new OpenAI(
+        $parameters = [];
+
+        if (is_string($effort) && trim($effort) !== '') {
+            $parameters = $responses
+                ? ['reasoning' => ['effort' => trim($effort)]]
+                : ['reasoning_effort' => trim($effort)];
+        }
+
+        $provider = $responses ? OpenAIResponses::class : OpenAI::class;
+
+        return new $provider(
             key: $key,
             model: is_string($model) && trim($model) !== '' ? $model : 'gpt-5.4-nano',
+            parameters: $parameters,
         );
     }
 

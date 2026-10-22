@@ -6,7 +6,7 @@ namespace NeuronAI\AgentSkills\Tests\Evaluation;
 
 use NeuronAI\AgentSkills\Evaluators\SkillResourceEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDiscoveryWithResourceEvaluator;
-use NeuronAI\AgentSkills\Evaluators\ScriptWorkflowEvaluator;
+use NeuronAI\AgentSkills\Evaluators\ScriptExecutionEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDependencyEvaluator;
 use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\Chat\Messages\ToolCallMessage;
@@ -92,38 +92,32 @@ class EvaluatorOrderTest extends TestCase
         $this->assertFalse($this->passes([[$parent], [$first, $first]], $steps));
     }
 
-    public function test_reporting_requires_configuration_preparation_and_separate_execution_after_analysis(): void
+    public function test_single_script_evaluation_allows_execution_retries_after_reading_and_preparation(): void
     {
-        $steps = [['tool' => 'skill', 'inputs' => ['name' => 'text-stats'], 'result' => 'Read configuration, analyze, inspect, then report.']];
-        $load = ToolCall::make('skill', 'load', ['name' => 'text-stats'])->setResult($steps[0]['result']);
-        $config = ToolCall::make('skill_resource', 'config', ['name' => 'text-stats', 'path' => 'config/analysis.yaml'])
-            ->setResult('max_words: 12');
-        $prepare = ToolCall::make('skill_script_prepare', 'prepare', ['name' => 'text-stats'])
-            ->setResult(['directory' => '/tmp/example', 'files' => []]);
-        $counts = '{"words":2,"lines":1,"characters":10,"max_words":12}';
-        $analyze = ToolCall::make('bash', 'analyze', ['command' => 'python3 scripts/analyze.py --max-words 12', 'working_directory' => '/tmp/example'])
-            ->setResult(['exit_code' => 0, 'output' => $counts]);
-        $report = ToolCall::make('bash', 'report', ['command' => 'python3 scripts/report.py', 'working_directory' => '/tmp/example'])
-            ->setResult(['exit_code' => 0, 'output' => 'PASS: 2 words, limit 12.']);
-        $prefix = [[$load], [$config], [$prepare]];
-        $evaluator = new ScriptWorkflowEvaluator();
-        $this->assertTrue($this->passes([...$prefix, [$analyze], [$report]], $steps, $evaluator));
-        $this->assertFalse($this->passes([...$prefix, [$analyze, $report]], $steps, $evaluator));
-        $this->assertFalse($this->passes([[$load], [$prepare], [$analyze], [$report]], $steps, $evaluator));
-        $this->assertFalse($this->passes([[$load], [$config, $prepare], [$analyze], [$report]], $steps, $evaluator));
+        $load = ToolCall::make('skill', 'load', ['name' => 'csv-check'])->setResult('Read the format, then validate.');
+        $read = ToolCall::make('skill_resource', 'read', ['name' => 'csv-check', 'path' => 'references/order-format.md'])
+            ->setResult('Required CSV columns.');
+        $prepare = ToolCall::make('skill_script_prepare', 'prepare', ['name' => 'csv-check'])
+            ->setResult(['directory' => '/tmp/example', 'files' => ['scripts/validate.py']]);
+        $inputs = ['command' => 'python3 scripts/validate.py orders.csv', 'working_directory' => '/tmp/example'];
+        $failed = ToolCall::make('bash', 'failed', $inputs)->setResult(ToolOutput::error('File not found.'));
+        $wrong = ToolCall::make('bash', 'wrong', $inputs)->setResult(['exit_code' => 0, 'output' => 'WRONG']);
+        $correct = ToolCall::make('bash', 'correct', $inputs)->setResult(['exit_code' => 0, 'output' => 'TOKEN']);
+        $unrelated = ToolCall::make('bash', 'unrelated', ['command' => 'echo TOKEN'])
+            ->setResult(['exit_code' => 0, 'output' => 'TOKEN']);
+        $evaluator = new ScriptExecutionEvaluator();
 
-        $combined = ToolCall::make('bash', 'combined', ['command' => 'python3 scripts/analyze.py --max-words 12 | python3 scripts/report.py'])
-            ->setResult(['exit_code' => 0, 'output' => 'PASS: 2 words, limit 12.']);
-        $this->assertFalse($this->passes([...$prefix, [$combined]], $steps, $evaluator));
-        $claimed = ToolCall::make('bash', 'claimed', ['command' => 'echo '.escapeshellarg($counts)])
-            ->setResult(['exit_code' => 0, 'output' => $counts]);
-        $this->assertFalse($this->passes([...$prefix, [$claimed], [$report]], $steps, $evaluator));
-
-        $report->setResult(['exit_code' => 0, 'output' => $counts]);
-        $this->assertFalse($this->passes([...$prefix, [$analyze], [$report]], $steps, $evaluator));
-        $report->setResult(['exit_code' => 0, 'output' => 'PASS: 2 words, limit 12.']);
-        $analyze->setResult(['exit_code' => 0, 'output' => '{"words":2,"lines":1,"characters":10,"max_words":11}']);
-        $this->assertFalse($this->passes([...$prefix, [$analyze], [$report]], $steps, $evaluator));
+        $this->assertTrue($this->passes([[$load], [$read], [$prepare], [$correct]], [], $evaluator));
+        $this->assertTrue($this->passes([[$load], [$read], [$prepare], [$failed], [$correct]], [], $evaluator));
+        $this->assertTrue($this->passes([[$load], [$read], [$prepare], [$wrong], [$correct]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$read], [$prepare], [$failed]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$read], [$prepare], [$correct], [$failed]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$read], [$prepare], [$unrelated], [$correct]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$read, $prepare], [$correct]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$read], [$prepare], [$failed, $correct]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$load], [$read], [$prepare], [$correct]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$read], [$failed], [$prepare], [$correct]], [], $evaluator));
+        $this->assertFalse($this->passes([[$load], [$prepare], [$failed], [$correct]], [], $evaluator));
     }
 
     /** @param list<list<ToolCall>> $batches */
@@ -149,8 +143,7 @@ class EvaluatorOrderTest extends TestCase
         }
 
         return $evaluator->performEvaluation(Trajectory::fromMessages($messages), [
-            'expectedAnalysis' => '{"words":2,"lines":1,"characters":10,"max_words":12}',
-            'expectedReport' => 'PASS: 2 words, limit 12.',
+            'expectedOutput' => 'TOKEN',
         ])->isPassed();
     }
 }

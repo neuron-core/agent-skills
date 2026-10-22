@@ -18,7 +18,7 @@ class SkillResourceTool extends Tool
 
     protected string $name = 'skill_resource';
 
-    protected ?string $description = 'Read a skill\'s referenced file.';
+    protected ?string $description = 'Read a file that loaded instructions explicitly ask you to read. Copy its complete path exactly.';
 
     public function __construct(protected SkillRepository $repository)
     {
@@ -30,14 +30,14 @@ class SkillResourceTool extends Tool
             new ToolProperty(
                 name: 'name',
                 type: PropertyType::STRING,
-                description: 'Name of the skill owning the file.',
+                description: 'Skill name.',
                 required: true,
                 enum: array_values(array_unique($this->repository->names())),
             ),
             new ToolProperty(
                 name: 'path',
                 type: PropertyType::STRING,
-                description: 'Literal file path from loaded instructions or references, relative to the skill root.',
+                description: 'Full path relative to the skill root, including directories, e.g. references/guide.md.',
                 required: true,
             ),
         ];

@@ -78,11 +78,11 @@ class SkillEvaluatorExecutionTest extends TestCase
     }
 
     /** @dataProvider storages */
-    public function test_multiple_requests_keep_supplied_text_in_the_same_conversation(string $storage): void
+    public function test_multiple_requests_keep_supplied_input_in_the_same_conversation(string $storage): void
     {
-        $provider = new FakeAIProvider(new AssistantMessage('Text received.'), new AssistantMessage('Text report.'));
-        $prompts = ['Here is the text: London has many parks.', 'Use the text-stats skill.'];
-        $fixture = new SkillFixture(['text-stats' => $storage]);
+        $provider = new FakeAIProvider(new AssistantMessage('File received.'), new AssistantMessage('Validation complete.'));
+        $prompts = ['Here is the file for my next request: orders.csv', 'Use csv-check to validate the file I provided.'];
+        $fixture = new SkillFixture(['csv-check' => $storage]);
         $fixture->setUp();
 
         try {
@@ -233,7 +233,7 @@ class SkillEvaluatorExecutionTest extends TestCase
                 }
             }
 
-            $this->assertNotContains($root.'/evaluators/Assertions/ScriptsWereExecuted.php', $dependencies);
+            $this->assertNotContains($root.'/evaluators/Assertions/ScriptWasExecuted.php', $dependencies);
         }
     }
 }

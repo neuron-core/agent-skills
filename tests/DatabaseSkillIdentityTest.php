@@ -88,7 +88,7 @@ class DatabaseSkillIdentityTest extends TestCase
             $this->assertSame($skillIdentifier, $matches[$identifier]->identifier());
             $this->assertStringNotContainsString('db://', $toolkit->guidelines() ?? '');
             $activation->setInputs(['name' => 'caveman'])->execute();
-            $this->assertSame('Unicode document', $activation->getResult());
+            $this->assertSame("Instructions loaded.\n\nUnicode document", $activation->getResult());
             $resource->setInputs(['name' => 'caveman', 'path' => 'notes%20.md'])->execute();
             $this->assertSame('Literal percent resource for '.$identifier, $matches[$identifier]->resource('notes%20.md')->load());
             $this->assertSame('Literal percent resource for café', $resource->getResult());
@@ -118,7 +118,7 @@ class DatabaseSkillIdentityTest extends TestCase
         $this->assertStringContainsString('writing: Shared table', $toolkit->guidelines() ?? '');
         $this->assertStringNotContainsString('Archive table', $toolkit->guidelines() ?? '');
         $activation->setInputs(['name' => 'writing'])->execute();
-        $this->assertSame('Shared document', $activation->getResult());
+        $this->assertSame("Instructions loaded.\n\nShared document", $activation->getResult());
         $resource->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
         $this->assertSame('Shared guide', $resource->getResult());
         $this->assertSame($document, $repository->catalog()[1]->loadDocument());

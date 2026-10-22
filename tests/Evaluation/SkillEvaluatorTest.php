@@ -6,7 +6,6 @@ namespace NeuronAI\AgentSkills\Tests\Evaluation;
 
 use NeuronAI\AgentSkills\Evaluators\Fixtures\SkillFixture;
 use NeuronAI\AgentSkills\Evaluators\ScriptExecutionEvaluator;
-use NeuronAI\AgentSkills\Evaluators\ScriptWorkflowEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDependencyEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDiscoveryEvaluator;
 use NeuronAI\AgentSkills\Evaluators\SkillDiscoveryWithResourceEvaluator;
@@ -61,7 +60,7 @@ class SkillEvaluatorTest extends TestCase
         $evaluator = new SkillDiscoveryEvaluator();
 
         foreach ($evaluator->getDataset()->load() as $item) {
-            foreach ([[], ['text-stats']] as $calls) {
+            foreach ([[], ['csv-check']] as $calls) {
                 $output = $this->recordExecution($item['expectedSkill'], $calls, 'Here is the requested assessment.');
                 $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($output['messages']), $item)->isPassed());
             }
@@ -281,12 +280,11 @@ class SkillEvaluatorTest extends TestCase
         $this->assertStringContainsString('skill_script_prepare', $result->failures[0]->getMessage());
     }
 
-    public function test_native_discovery_finds_seven_evaluators_in_alphabetical_order(): void
+    public function test_native_discovery_finds_six_evaluators_in_alphabetical_order(): void
     {
         $classes = (new EvaluatorDiscovery())->discover(dirname(__DIR__, 2).'/evaluators');
         $this->assertSame([
             ScriptExecutionEvaluator::class,
-            ScriptWorkflowEvaluator::class,
             SkillDependencyEvaluator::class,
             SkillDiscoveryEvaluator::class,
             SkillDiscoveryWithResourceEvaluator::class,

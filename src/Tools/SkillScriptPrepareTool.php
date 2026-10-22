@@ -18,8 +18,9 @@ class SkillScriptPrepareTool extends Tool
 {
     protected string $name = 'skill_script_prepare';
 
-    protected ?string $description = 'When loaded instructions require running a script, prepare its files after reading required references. '
-        .'Returns their local directory and file paths.';
+    protected ?string $description = 'Prepare a skill\'s files when its loaded instructions require running a script. '
+        .'Returns a local directory and relative file paths. '
+        .'Use the returned directory as the execution tool\'s working directory.';
 
     public function __construct(private SkillRepository $repository)
     {
@@ -31,7 +32,7 @@ class SkillScriptPrepareTool extends Tool
             new ToolProperty(
                 name: 'name',
                 type: PropertyType::STRING,
-                description: 'Name of the skill containing the script.',
+                description: 'Skill name.',
                 required: true,
                 enum: array_values(array_unique($this->repository->names())),
             ),

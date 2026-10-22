@@ -73,7 +73,7 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertSame(['shared'], $tool->getInputSchema()['properties']['name']['enum']);
         $tool->setInputs(['name' => 'shared'])->execute();
 
-        $this->assertSame('project instructions.', $tool->getResult());
+        $this->assertSame("Instructions loaded.\n\nproject instructions.", $tool->getResult());
     }
 
     /** @dataProvider storageOrders */
@@ -215,7 +215,7 @@ class MultipleSkillStoragesTest extends TestCase
             $this->assertStringContainsString('Project', $toolkit->guidelines() ?? '');
             [$activation, $resource] = $toolkit->tools();
             $activation->setInputs(['name' => '123'])->execute();
-            $this->assertSame('project instructions.', $activation->getResult());
+            $this->assertSame("Instructions loaded.\n\nproject instructions.", $activation->getResult());
             $resource->setInputs(['name' => '123', 'path' => 'guide.md'])->execute();
             $this->assertSame("project guide for '123'", $resource->getResult());
         }
@@ -261,7 +261,7 @@ class MultipleSkillStoragesTest extends TestCase
 
         [$activation] = $toolkit->tools();
         $activation->setInputs(['name' => 'shared'])->execute();
-        $this->assertSame('project instructions.', $activation->getResult());
+        $this->assertSame("Instructions loaded.\n\nproject instructions.", $activation->getResult());
     }
 
     public function test_exact_selection_keeps_documents_identifiers_and_resources_together(): void

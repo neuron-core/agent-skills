@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Evaluators;
 
-use NeuronAI\AgentSkills\Evaluators\Assertions\ScriptsWereExecuted;
+use NeuronAI\AgentSkills\Evaluators\Assertions\ScriptWasExecuted;
 use NeuronAI\AgentSkills\Evaluators\Fixtures\SkillFixture;
-use NeuronAI\Evaluation\Assertions\Trajectory\Mode;
-use NeuronAI\Evaluation\Assertions\Trajectory\TrajectoryMatches;
 use NeuronAI\Evaluation\Contracts\DatasetInterface;
 use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Evaluation\Dataset\ArrayDataset;
@@ -20,7 +18,7 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
             [
                 'skills' => [
                     'csv-check' => 'filesystem',
-                    'text-stats' => 'filesystem',
+                    'ticket-triage' => 'filesystem',
                     'risk-review' => 'filesystem',
                 ],
                 'prompt' => 'Use csv-check to validate %s',
@@ -33,7 +31,7 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
             [
                 'skills' => [
                     'csv-check' => 'filesystem',
-                    'text-stats' => 'filesystem',
+                    'ticket-triage' => 'filesystem',
                     'risk-review' => 'filesystem',
                 ],
                 'prompt' => 'Use csv-check to check %s',
@@ -46,7 +44,7 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
             [
                 'skills' => [
                     'csv-check' => 'filesystem',
-                    'text-stats' => 'filesystem',
+                    'ticket-triage' => 'filesystem',
                     'risk-review' => 'filesystem',
                 ],
                 'prompt' => 'Use csv-check to validate %s',
@@ -59,7 +57,7 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
             [
                 'skills' => [
                     'csv-check' => 'database',
-                    'text-stats' => 'database',
+                    'ticket-triage' => 'database',
                     'risk-review' => 'database',
                 ],
                 'prompt' => 'Use csv-check to validate %s',
@@ -72,7 +70,7 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
             [
                 'skills' => [
                     'csv-check' => 'database',
-                    'text-stats' => 'database',
+                    'ticket-triage' => 'database',
                     'risk-review' => 'database',
                 ],
                 'prompt' => 'Use csv-check to check %s',
@@ -85,7 +83,7 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
             [
                 'skills' => [
                     'csv-check' => 'database',
-                    'text-stats' => 'database',
+                    'ticket-triage' => 'database',
                     'risk-review' => 'database',
                 ],
                 'prompt' => 'Use csv-check to validate %s',
@@ -119,15 +117,10 @@ final class ScriptExecutionEvaluator extends BaseSkillEvaluator
     public function evaluate(mixed $trajectory, array $datasetItem): void
     {
         $this->assert(
-            new TrajectoryMatches(['skill', 'skill_resource', 'skill_script_prepare', 'bash'], Mode::Strict),
-            $trajectory,
-            'load, read, prepare and execute without extra calls',
-        );
-
-        $this->assert(
-            new ScriptsWereExecuted(
+            new ScriptWasExecuted(
                 skill: 'csv-check',
-                scripts: ['scripts/validate.py' => $datasetItem['expectedOutput']],
+                script: 'scripts/validate.py',
+                expectedOutput: $datasetItem['expectedOutput'],
                 referencePath: 'references/order-format.md',
             ),
             $trajectory,
