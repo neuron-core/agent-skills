@@ -52,7 +52,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertStringContainsString('writing: Write clearly', $prompt);
         $this->assertStringNotContainsString('db://', $prompt);
         $this->assertStringNotContainsString('Prefer concrete words.', $prompt);
-        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, 'Read references/guide.md.'));
+        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, "Instructions loaded.\n\nRead references/guide.md."));
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, 'Read references/my %20 città.md.'));
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasResult($record, "Prefer concrete words.\n"));
         $provider->assertToolsConfigured(['skill', 'skill_resource', 'skill_script_prepare']);
@@ -107,7 +107,7 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertSame(['writing'], $repository->names());
         $this->assertSame($guidelines, $toolkit->guidelines());
         $activation->setInputs(['name' => 'writing'])->execute();
-        $this->assertSame('Updated body', $activation->getResult());
+        $this->assertSame("Instructions loaded.\n\nUpdated body", $activation->getResult());
         $pdo->prepare('UPDATE skills SET content = ? WHERE path = ?')->execute(['Updated guide', 'guide.md']);
         $resource->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
         $this->assertSame('Updated guide', $resource->getResult());
@@ -213,7 +213,7 @@ class DatabaseSkillToolkitTest extends TestCase
                 ));
                 $this->assertStringNotContainsString('location:', $toolkit->guidelines() ?? '');
                 $load->setInputs(['name' => 'writing'])->execute();
-                $this->assertSame($instructions, $load->getResult());
+                $this->assertSame("Instructions loaded.\n\n".$instructions, $load->getResult());
                 $this->assertSame(['writing'], $resources->getProperties()[0]->getJsonSchema()['enum']);
                 $resources->setInputs(['name' => 'writing', 'path' => 'guide.md'])->execute();
                 $this->assertSame($guide, $resources->getResult());

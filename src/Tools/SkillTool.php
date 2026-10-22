@@ -18,8 +18,7 @@ class SkillTool extends Tool
 
     protected string $name = 'skill';
 
-    protected ?string $description = 'Load a skill\'s complete instructions by name. '
-        .'Do not reload a successfully loaded skill; follow its returned instructions.';
+    protected ?string $description = 'Load a skill\'s complete instructions.';
 
     public function __construct(protected SkillRepository $repository)
     {
@@ -31,7 +30,7 @@ class SkillTool extends Tool
             new ToolProperty(
                 name: 'name',
                 type: PropertyType::STRING,
-                description: 'Name of the skill to load next.',
+                description: 'Skill name.',
                 required: true,
                 enum: array_values(array_unique($this->repository->names())),
             ),
@@ -41,7 +40,9 @@ class SkillTool extends Tool
     public function __invoke(string $name): string|ToolOutput
     {
         try {
-            return $this->repository->getByName($name)->loadInstructions();
+            $instructions = $this->repository->getByName($name)->loadInstructions();
+
+            return trim($instructions) === '' ? $instructions : "Instructions loaded.\n\n".$instructions;
         } catch (RuntimeException $exception) {
             return ToolOutput::error($exception->getMessage());
         }

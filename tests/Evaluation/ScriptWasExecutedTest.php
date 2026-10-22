@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace NeuronAI\AgentSkills\Tests\Evaluation;
 
-use NeuronAI\AgentSkills\Evaluators\Assertions\ScriptsWereExecuted;
+use NeuronAI\AgentSkills\Evaluators\Assertions\ScriptWasExecuted;
 use NeuronAI\Chat\Messages\ToolCallMessage;
 use NeuronAI\Chat\Messages\ToolResultMessage;
 use NeuronAI\Evaluation\Conversation\Trajectory;
@@ -12,11 +12,11 @@ use NeuronAI\Tools\ToolCall;
 use NeuronAI\Tools\ToolOutput;
 use PHPUnit\Framework\TestCase;
 
-class ScriptsWereExecutedTest extends TestCase
+class ScriptWasExecutedTest extends TestCase
 {
     public function test_requires_the_script_command_successful_exit_and_expected_output(): void
     {
-        $rule = new ScriptsWereExecuted('example', ['scripts/check.py' => 'TOKEN'], 'references/run.md');
+        $rule = new ScriptWasExecuted('example', 'scripts/check.py', 'TOKEN', 'references/run.md');
         $calls = [
             ToolCall::make('skill', 'load', ['name' => 'example'])->setResult('Read reference.'),
             ToolCall::make('skill_resource', 'read', ['name' => 'example', 'path' => 'references/run.md'])->setResult('Run script.'),

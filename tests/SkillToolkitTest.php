@@ -98,7 +98,18 @@ class SkillToolkitTest extends TestCase
 
         $tool->setInputs(['name' => 'writing'])->execute();
 
-        $this->assertSame($instructions, $tool->getResult());
+        $this->assertSame("Instructions loaded.\n\n".$instructions, $tool->getResult());
+    }
+
+    public function test_empty_instructions_do_not_report_a_successful_load(): void
+    {
+        file_put_contents($this->skillsRoot.'/writing/SKILL.md', "---\nname: writing\ndescription: Write clear prose\n---\n\n");
+        $repository = new SkillRepository(new FileSystemSkillStorage($this->skillsRoot));
+        [$tool] = (new SkillToolkit($repository))->tools();
+
+        $tool->setInputs(['name' => 'writing'])->execute();
+
+        $this->assertSame('', $tool->getResult());
     }
 
     public function test_agent_discloses_catalog_and_loads_instructions_through_the_tool_loop(): void
@@ -133,15 +144,14 @@ class SkillToolkitTest extends TestCase
         $systemPrompt = $provider->getRecorded()[0]->systemPrompt?->getContent() ?? '';
         $this->assertStringContainsString('writing: Write clear prose', $systemPrompt);
         $this->assertStringContainsString('skill', $systemPrompt);
-        $this->assertStringContainsString('For the user\'s requested task, load matching or explicitly named skills with `skill` and follow their instructions to completion.', $systemPrompt);
-        $this->assertStringContainsString('Load each skill once. If its instructions call another skill, use that new name in the next `skill` call.', $systemPrompt);
-        $this->assertSame('Load a skill\'s complete instructions by name.', $skillTool->getDescription());
+        $this->assertStringContainsString($toolkit->guidelines() ?? '', $systemPrompt);
+        $this->assertSame('Load a skill\'s complete instructions.', $skillTool->getDescription());
         $this->assertStringNotContainsString('file://', $systemPrompt);
         $this->assertStringNotContainsString('Prefer direct sentences.', $systemPrompt);
         $this->assertStringNotContainsString('Use concrete words.', $systemPrompt);
         $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult(
             $record,
-            "# Writing instructions\n\nPrefer direct sentences.",
+            "Instructions loaded.\n\n# Writing instructions\n\nPrefer direct sentences.",
         ));
     }
 
@@ -177,7 +187,7 @@ class SkillToolkitTest extends TestCase
             $this->assertStringContainsString('writing: Write clear prose', $prompt);
             $this->assertStringNotContainsString('location:', $prompt);
             foreach ([
-                "# Writing instructions\n\nPrefer direct sentences.",
+                "Instructions loaded.\n\n# Writing instructions\n\nPrefer direct sentences.",
                 "# Style guide\n\nUse concrete words.\n",
                 'Resource path "../secret.md" escapes the skill root.',
                 'Resource "secret-link.md" escapes skill "'.$skillIdentifier.'".',
@@ -220,7 +230,7 @@ class SkillToolkitTest extends TestCase
 
         $this->assertSame(['skill', 'skill_resource'], $calls);
         $this->assertSame([
-            "# Writing instructions\n\nPrefer direct sentences.",
+            "Instructions loaded.\n\n# Writing instructions\n\nPrefer direct sentences.",
             "# Style guide\n\nUse concrete words.\n",
         ], $results);
         $this->assertSame('I read the style guide.', $text);
@@ -246,7 +256,7 @@ class SkillToolkitTest extends TestCase
         $this->assertStringContainsString('écriture: Write clearly', $prompt);
         $this->assertStringNotContainsString('storage identifier', $prompt);
         $this->assertStringNotContainsString('MIT', $prompt);
-        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, 'Unicode skill body.'));
+        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult($record, "Instructions loaded.\n\nUnicode skill body."));
     }
 
     public function test_multiline_description_stays_on_one_catalog_line(): void
@@ -692,7 +702,7 @@ class SkillToolkitTest extends TestCase
         $this->assertSame([], $repository->diagnostics());
         $activation = $toolkit->tools()[0];
         $activation->setInputs(['name' => 'writing'])->execute();
-        $this->assertSame('Body', $activation->getResult());
+        $this->assertSame("Instructions loaded.\n\nBody", $activation->getResult());
         $this->assertStringNotContainsString('file://', $toolkit->guidelines() ?? '');
     }
 
@@ -772,7 +782,7 @@ class SkillToolkitTest extends TestCase
         $this->assertStringNotContainsString('skills://', $guidelines);
         [$activation, $resource] = $toolkit->tools();
         $activation->setInputs(['name' => 'declared'])->execute();
-        $this->assertSame('Read references/guide.md when needed.', $activation->getResult());
+        $this->assertSame("Instructions loaded.\n\nRead references/guide.md when needed.", $activation->getResult());
         $storage->resourcesAvailable = true;
         $resource->setInputs(['name' => 'declared', 'path' => 'references/guide.md'])->execute();
         $this->assertSame('Lazy guide', $resource->getResult());

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace NeuronAI\AgentSkills\Tests\Evaluation;
 
 use NeuronAI\AgentSkills\Evaluators\ScriptExecutionEvaluator;
-use NeuronAI\AgentSkills\Evaluators\ScriptWorkflowEvaluator;
 use NeuronAI\AgentSkills\Evaluators\Fixtures\SkillFixture;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
@@ -17,11 +16,10 @@ use NeuronAI\Evaluation\Conversation\Trajectory;
 use NeuronAI\Tools\ToolCall;
 use NeuronAI\Tools\Toolkits\FileSystem\BashTool;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Yaml\Yaml;
 
 class SkillFixtureTest extends TestCase
 {
-    /** @dataProvider textStorages */
+    /** @dataProvider storages */
     public function test_setup_creates_only_the_selected_storage(string $storage): void
     {
         $fixture = new SkillFixture(['risk-review' => $storage]);
@@ -50,7 +48,7 @@ class SkillFixtureTest extends TestCase
         }
     }
 
-    /** @dataProvider textStorages */
+    /** @dataProvider storages */
     public function test_input_files_keep_their_contents_and_are_removed_by_cleanup(string $storage): void
     {
         $fixture = new SkillFixture(['risk-review' => $storage]);
@@ -74,89 +72,7 @@ class SkillFixtureTest extends TestCase
         $this->assertFileDoesNotExist($emptyFile);
     }
 
-    /** @dataProvider workflowCases */
-    public function test_text_scripts_read_configuration_prepare_and_execute_separately(array $item): void
-    {
-        $storage = $item['skills']['text-stats'];
-        $fixture = new SkillFixture($item['skills']);
-        $fixture->setUp();
-        $messages = [];
-
-        try {
-            [$load, $read, $prepare] = (new SkillToolkit($fixture->repository))->tools();
-            $load->setInputs(['name' => 'text-stats'])->execute();
-            $call = ToolCall::make('skill', 'load', ['name' => 'text-stats'])->setResult($load->getResult());
-            $messages[] = new ToolCallMessage(tools: [$call]);
-            $messages[] = new ToolResultMessage([$call]);
-            $read->setInputs(['name' => 'text-stats', 'path' => 'config/analysis.yaml'])->execute();
-            $config = Yaml::parse($read->getResult());
-            $call = ToolCall::make('skill_resource', 'config', ['name' => 'text-stats', 'path' => 'config/analysis.yaml'])
-                ->setResult($read->getResult());
-            $messages[] = new ToolCallMessage(tools: [$call]);
-            $messages[] = new ToolResultMessage([$call]);
-            $prepare->setInputs(['name' => 'text-stats'])->execute();
-            $directory = json_decode($prepare->getResult(), true, flags: JSON_THROW_ON_ERROR)['directory'];
-            $call = ToolCall::make('skill_script_prepare', 'prepare', ['name' => 'text-stats'])->setResult($prepare->getResult());
-            $messages[] = new ToolCallMessage(tools: [$call]);
-            $messages[] = new ToolResultMessage([$call]);
-            $prompt = is_array($item['prompt']) ? $item['prompt'][0] : $item['prompt'];
-            $text = explode("\n\n", $prompt, 2)[1];
-            $commands = [
-                'printf %s '.escapeshellarg($text).' | python3 scripts/analyze.py --max-words '.$config['max_words'],
-                'printf %s '.escapeshellarg($item['expectedAnalysis']).' | python3 scripts/report.py',
-            ];
-
-            $expectedOutputs = [$item['expectedAnalysis'], $item['expectedReport']];
-
-            foreach ($commands as $index => $command) {
-                $bash = new BashTool();
-                $inputs = ['command' => $command, 'working_directory' => $directory];
-                $bash->setInputs($inputs)->execute();
-                $result = json_decode($bash->getResult(), true, flags: JSON_THROW_ON_ERROR);
-                $this->assertSame(0, $result['exit_code']);
-                $this->assertSame($expectedOutputs[$index], trim($result['output']));
-                $call = ToolCall::make('bash', (string) $index, $inputs)->setResult($bash->getResult());
-                $messages[] = new ToolCallMessage(tools: [$call]);
-                $messages[] = new ToolResultMessage([$call]);
-            }
-
-            $messages[] = new AssistantMessage($item['expectedReport']);
-            $evaluator = new ScriptWorkflowEvaluator();
-            $this->assertTrue($evaluator->performEvaluation(Trajectory::fromMessages($messages), $item)->isPassed());
-
-            $bash = new BashTool();
-            $inputs = ['command' => 'python3 scripts/analyze.py', 'working_directory' => $directory.'/unprepared'];
-            $bash->setInputs($inputs)->execute();
-            $premature = ToolCall::make('bash', 'premature', $inputs)->setResult($bash->getResult());
-            $prematureExecution = [...array_slice($messages, 0, 4), new ToolCallMessage(tools: [$premature]),
-                new ToolResultMessage([$premature]), ...array_slice($messages, 4)];
-            $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($prematureExecution), $item)->isPassed());
-
-            $withoutPreparation = [...array_slice($messages, 0, 4), ...array_slice($messages, 6)];
-            $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($withoutPreparation), $item)->isPassed());
-
-            $bash = new BashTool();
-            $inputs = ['command' => $commands[0].' | python3 scripts/report.py', 'working_directory' => $directory];
-            $bash->setInputs($inputs)->execute();
-            $call = ToolCall::make('bash', 'pipeline', $inputs)->setResult($bash->getResult());
-            $pipeline = [...array_slice($messages, 0, 6), new ToolCallMessage(tools: [$call]),
-                new ToolResultMessage([$call]), new AssistantMessage($item['expectedReport'])];
-            $this->assertFalse($evaluator->performEvaluation(Trajectory::fromMessages($pipeline), $item)->isPassed());
-
-            $this->assertSame($storage === 'filesystem', $directory === $fixture->root.'/text-stats');
-        } finally {
-            $fixture->cleanUp(Trajectory::fromMessages($messages));
-        }
-    }
-
-    public static function workflowCases(): iterable
-    {
-        foreach ((new ScriptWorkflowEvaluator())->getDataset()->load() as $item) {
-            yield [$item];
-        }
-    }
-
-    public static function textStorages(): iterable
+    public static function storages(): iterable
     {
         yield 'filesystem' => ['filesystem'];
         yield 'database' => ['database'];
@@ -229,12 +145,12 @@ class SkillFixtureTest extends TestCase
         }
     }
 
-    public function test_catalog_contains_the_seven_natural_skills_and_the_alias_is_not_rewritten(): void
+    public function test_catalog_contains_the_six_natural_skills_and_the_alias_is_not_rewritten(): void
     {
         $fixture = new SkillFixture(array_fill_keys(array_keys(SkillFixture::catalogFiles()), 'filesystem'));
         $fixture->setUp();
         try {
-            $this->assertCount(7, $fixture->repository->catalog());
+            $this->assertCount(6, $fixture->repository->catalog());
             $this->assertSame('Call the Skill tool with "risk-review".', $fixture->repository->getByName('review-my-plan')->loadInstructions());
         } finally {
             $fixture->cleanUp(Trajectory::fromMessages([]));
