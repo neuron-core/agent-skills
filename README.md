@@ -386,10 +386,11 @@ and pull requests. From the repository root, run the development checks with:
 
 ```sh
 composer install
-composer check
+composer test
+composer analyse
 ```
 
-`composer check` runs PHPUnit and PHPStan without requiring an API key.
+`composer test` runs PHPUnit and `composer analyse` runs PHPStan, without requiring an API key.
 Development requires PDO and `pdo_sqlite` for the real in-memory SQLite tests.
 CI covers PHP 8.1–8.5, multiple Neuron AI versions and Symfony YAML compatibility.
 

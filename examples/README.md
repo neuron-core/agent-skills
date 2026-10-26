@@ -161,7 +161,7 @@ which appears only in that database reference.
 The evaluation suite now lives in [`evaluators/`](../evaluators/README.md) and
 uses Neuron's native runner. Run `composer evaluate` from the project root.
 It uses `examples/.env` and makes real model API calls. Offline checks remain
-available through `composer check`.
+available through `composer test` and `composer analyse`.
 
 ### Database setup
 
