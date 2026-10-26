@@ -24,7 +24,8 @@ jobs:
       - run: composer validate --strict
       - run: composer update --with "neuron-core/neuron-ai:${{ matrix.neuron }}" --no-interaction --prefer-dist
       - run: composer show neuron-core/neuron-ai
-      - run: composer check
+      - run: composer test
+      - run: composer analyse
 
   yaml-compatibility:
     runs-on: ubuntu-latest
@@ -33,9 +34,11 @@ jobs:
       matrix:
         include:
           - php: '8.2'
+            platform: '8.2.0'
             yaml: '7.4.*'
           - php: '8.4'
-            yaml: '8.0.*'
+            platform: '8.4.1'
+            yaml: '8.1.*'
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
@@ -44,6 +47,7 @@ jobs:
           extensions: curl, dom, mbstring, pdo, pdo_sqlite, xml, xmlwriter
           tools: composer:v2
           coverage: none
-      - run: composer config platform.php ${{ matrix.php }}.0
+      - run: composer config platform.php ${{ matrix.platform }}
       - run: composer update --with "symfony/yaml:${{ matrix.yaml }}" --no-interaction --prefer-dist
-      - run: composer check
+      - run: composer test
+      - run: composer analyse

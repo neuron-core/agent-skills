@@ -31,11 +31,7 @@
     "scripts": {
         "test": "phpunit",
         "analyse": "phpstan analyse --memory-limit=1G",
-        "evaluate": "neuron evaluation --path=evaluators --autoload-file=evaluators/bootstrap.php --verbose",
-        "check": [
-            "@test",
-            "@analyse"
-        ]
+        "evaluate": "neuron evaluation --path=evaluators --autoload-file=evaluators/bootstrap.php --verbose"
     },
     "config": {
         "sort-packages": true,

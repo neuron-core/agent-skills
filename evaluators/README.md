@@ -186,7 +186,7 @@ assertion changes reuse recorded conversations and evaluate them again. Use
 `--fresh` when changing environment settings such as the model.
 
 ```sh
-composer check
+composer test
 ```
 
 PHPUnit verifies the assertions with recorded messages and exercises the real
