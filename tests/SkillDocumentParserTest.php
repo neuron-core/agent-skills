@@ -12,7 +12,7 @@ class SkillDocumentParserTest extends TestCase
     /** @dataProvider yamlDocuments */
     public function test_interprets_yaml_strings(string $yaml, string $description): void
     {
-        $result = (new SkillDocumentParser())->parse("---\nname: writing\n".$yaml."\n---\nBody", 'writing');
+        $result = (new SkillDocumentParser())->parse("---\nname: writing\n".$yaml."\n---\nBody");
         $this->assertSame([], $result['warnings']);
         $this->assertSame($description, $result['document']['description'] ?? null);
     }
@@ -37,7 +37,7 @@ class SkillDocumentParserTest extends TestCase
     public function test_json_style_flow_strings_are_preserved(): void
     {
         $yaml = '{"name":"writing","description":"literal, ? stuff", "metadata":{"text":"other, ? content", "author":"Alice"}}';
-        $result = (new SkillDocumentParser())->parse("---\n".$yaml."\n---\nBody", 'writing');
+        $result = (new SkillDocumentParser())->parse("---\n".$yaml."\n---\nBody");
         $this->assertSame([], $result['warnings']);
         $this->assertSame('literal, ? stuff', $result['document']['description'] ?? null);
         $this->assertSame('other, ? content', $result['document']['frontmatter']->metadata->text ?? null);
@@ -60,7 +60,7 @@ class SkillDocumentParserTest extends TestCase
               actual: {key: value}
             ---
             Body
-            SKILL, 'writing');
+            SKILL);
         $this->assertNotNull($result['document']);
         $this->assertSame('{? name: writing, ? description: Works}', $result['document']['description']);
         $metadata = $result['document']['frontmatter']->metadata;
@@ -84,7 +84,7 @@ class SkillDocumentParserTest extends TestCase
             custom: {enabled: true, nested: [one, two]}
             ---
             Body
-            SKILL, 'writing');
+            SKILL);
         $this->assertSame([], $result['warnings']);
         $frontmatter = $result['document']['frontmatter'] ?? null;
         $this->assertNotNull($frontmatter);
@@ -99,7 +99,7 @@ class SkillDocumentParserTest extends TestCase
     public function test_supports_flow_frontmatter_and_normalizes_numeric_metadata_keys(): void
     {
         foreach (['123', '"123"'] as $key) {
-            $result = (new SkillDocumentParser())->parse("---\n{name: writing, description: Good, metadata: {".$key.": value}}\n---\nBody", 'writing');
+            $result = (new SkillDocumentParser())->parse("---\n{name: writing, description: Good, metadata: {".$key.": value}}\n---\nBody");
             $this->assertSame([], $result['warnings']);
             $this->assertSame('value', $result['document']['frontmatter']->metadata->{'123'} ?? null);
         }
@@ -109,7 +109,7 @@ class SkillDocumentParserTest extends TestCase
     {
         $name = str_repeat('é', 64);
         $body = str_repeat("Unrestricted Markdown.\n", 600);
-        $result = (new SkillDocumentParser())->parse("---\nname: $name\ndescription: ".str_repeat('語', 1024)."\ncompatibility: ".str_repeat('é', 500)."\nmetadata: {}\n---\n".$body, $name);
+        $result = (new SkillDocumentParser())->parse("---\nname: $name\ndescription: ".str_repeat('語', 1024)."\ncompatibility: ".str_repeat('é', 500)."\nmetadata: {}\n---\n".$body);
         $this->assertSame([], $result['warnings']);
         $this->assertSame($body, $result['document']['body'] ?? null);
     }
@@ -117,7 +117,7 @@ class SkillDocumentParserTest extends TestCase
     /** @dataProvider toleratedViolations */
     public function test_reports_nonconformance_without_excluding_usable_documents(string $fields, string $warning): void
     {
-        $result = (new SkillDocumentParser())->parse("---\n".$fields."\n---\nBody", 'writing');
+        $result = (new SkillDocumentParser())->parse("---\n".$fields."\n---\nBody");
         $this->assertNotNull($result['document']);
         $this->assertStringContainsString($warning, implode(' ', $result['warnings']));
     }
@@ -127,7 +127,6 @@ class SkillDocumentParserTest extends TestCase
     {
         $base = "name: writing\ndescription: Good";
         return [
-            'mismatch' => ["name: other\ndescription: Good", 'storage identifier'],
             'uppercase' => ["name: Écriture\ndescription: Good", 'lowercase'],
             'hyphens' => ["name: -bad--name-\ndescription: Good", 'hyphens'],
             'name length' => ["name: ".str_repeat('é', 65)."\ndescription: Good", '64 characters'],
@@ -145,7 +144,7 @@ class SkillDocumentParserTest extends TestCase
     /** @dataProvider unusableDocuments */
     public function test_excludes_unusable_documents(string $yaml): void
     {
-        $result = (new SkillDocumentParser())->parse("---\n".$yaml."\n---\nBody", 'writing');
+        $result = (new SkillDocumentParser())->parse("---\n".$yaml."\n---\nBody");
         $this->assertNull($result['document']);
         $this->assertNotEmpty($result['warnings']);
     }

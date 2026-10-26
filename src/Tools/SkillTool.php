@@ -8,6 +8,7 @@ use RuntimeException;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\Tools\PropertyType;
 use NeuronAI\Tools\Tool;
+use NeuronAI\Tools\ToolOutput;
 use NeuronAI\Tools\ToolProperty;
 use NeuronAI\Tools\TrackByInputs;
 
@@ -17,7 +18,7 @@ class SkillTool extends Tool
 
     protected string $name = 'skill';
 
-    protected ?string $description = 'Load an available skill\'s complete SKILL.md.';
+    protected ?string $description = 'Load a skill\'s complete instructions.';
 
     public function __construct(protected SkillRepository $repository)
     {
@@ -29,19 +30,21 @@ class SkillTool extends Tool
             new ToolProperty(
                 name: 'name',
                 type: PropertyType::STRING,
-                description: 'The name of the skill to load.',
+                description: 'Skill name.',
                 required: true,
-                enum: $this->repository->names(),
+                enum: array_values(array_unique($this->repository->names())),
             ),
         ];
     }
 
-    public function __invoke(string $name): string
+    public function __invoke(string $name): string|ToolOutput
     {
         try {
-            return $this->repository->get($name)->readDocument();
+            $instructions = $this->repository->getByName($name)->loadInstructions();
+
+            return trim($instructions) === '' ? $instructions : "Instructions loaded.\n\n".$instructions;
         } catch (RuntimeException $exception) {
-            return $exception->getMessage();
+            return ToolOutput::error($exception->getMessage());
         }
     }
 }

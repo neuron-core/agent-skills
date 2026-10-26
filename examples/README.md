@@ -1,102 +1,207 @@
-# Try the skills demo
+# Try the skills demos
 
-One interactive agent loads two skill sources: `php-check`, included in
-`skills/`, and `caveman`, installed into `.agents/skills/` with the Skills CLI.
+Three interactive examples use the same chat runner (`demo-chat.php`) and
+configure different skill storages:
+
+| Example | Storages | Skills |
+| --- | --- | --- |
+| `filesystem.php` | Two filesystem directories: `skills/` and `.agents/skills/` | `php-check`, `caveman` |
+| `database.php` | One SQLite database: `text-stats.sqlite` | `text-stats` |
+| `multiple.php` | Two filesystem directories and two SQLite databases | `php-check`, `caveman`, `dante`, `text-stats` |
 
 ## Setup
 
-You need PHP 8.1+, Composer, Node.js/npm and an OpenAI API key. For script
-execution, the PHP CLI needs `curl`, `json` and `proc_open`. The demo makes real
-API requests.
+You need PHP 8.1+, Composer and an OpenAI API key. SQLite examples also need PDO
+and `pdo_sqlite`. The PHP check script checks `curl`, `json` and `proc_open`.
+The text statistics script needs Python 3, with no additional packages.
+The interactive demos make real API requests.
 
 From the repository root:
 
 ```sh
 composer install
+php examples/sqlite-setup.php
 cp examples/.env.example examples/.env
 ```
 
 Set `OPENAI_API_KEY` in `examples/.env`. The default model is `gpt-5.4-nano`;
 change `OPENAI_MODEL` if needed.
 
-Install `caveman` **from `examples/`**, then start the chat:
+For the filesystem and mixed examples, install `caveman` from `examples/`:
 
 ```sh
 cd examples
 npx skills add juliusbrussee/caveman --skill caveman --agent universal --yes
-php agent-loop.php
 ```
 
-The startup list should include `php-check` and `caveman`.
+Type `exit` or `quit` to stop a demo. Restart after installing new skills.
+The runner prints tool calls so you can inspect skill selection, resource reads
+and script execution. For `bash` results it prints only the status: `success`,
+`error`, or `returned` if no explicit status is available. It does not print result
+contents or results from other tools.
 
-## Try this conversation
+## 1. Filesystem only
 
-This example shows an actual conversation; wording, paths and results can vary on your machine.
+From the repository root:
+
+```sh
+php examples/filesystem.php
+```
+
+Ask: **“Usa php-check e spiegami i risultati.”**
+
+The trace should show `skill` with name `php-check`,
+`skill_resource` with name `php-check` and path `references/checks.md`, `skill_script_prepare` with name `php-check`, then `bash` executing
+`php scripts/check.php` from the skill directory. The script reports
+`PHP_VERSION`, `CURL_EXTENSION`, `JSON_EXTENSION` and `PROC_OPEN`.
+
+All three tools are registered for the filesystem demo. `skill_resource(name, path)`
+reads one supporting file and returns its full contents as text. `skill` and
+`skill_resource` only read; `skill_script_prepare(name)` returns the original
+native directory and all available relative resource paths. The separate
+execution tool runs from that returned directory. No URI decoding or temporary
+copy is required from the agent.
+
+## 2. Database only
+
+```sh
+php examples/database.php
+```
+
+Ask: **“Usa text-stats per analizzare il testo Ciao città.”**
+
+The agent selects the declared name `text-stats`. The skill stores
+two collaborating Python scripts and a configuration file alongside `SKILL.md`:
 
 ```text
-$ php agent-loop.php
-Available skills: php-check, caveman
-
-Try php-check for runtime checks or caveman for terse answers.
-See examples/README.md for setup and both scenarios.
-
-Type a message, or 'exit' to quit.
-
-> use caveman skill to explain the universe
-
-[tool: skill {"name":"caveman"}]
-
-Universe explain: space-time is a dynamical stage; matter/energy tells it how to curve; curvature tells matter/energy how to move.
-
-Big picture chain:
-- At smallest scales: quantum fields. Particles = field excitations.
-- Laws: gauge symmetry + quantum rules (Standard Model for known forces).
-- Gravity: usually modeled by general relativity (space-time curvature).
-- Early universe: hot, dense; rapid expansion (Big Bang model).
-- Structure growth: tiny density fluctuations → gravity collapse → galaxies/clusters.
-- Observations: expansion + CMB + light-element abundances support the model.
-- Fate: expansion keeps accelerating → dark energy term (unknown physics).
-
-“Why” it all exists: no confirmed answer; physics gives rules, not ultimate cause.
-
-> nice!
-
-Good.
-
-> now use php-check skill and explain the results
-
-[tool: skill {"name":"php-check"}]
-
-[tool: skill_resource {"name":"php-check","path":"references/checks.md"}]
-
-[tool: bash {"command":"php scripts/check.php","working_directory":"/home/asterix/neuron-core/agent-skills/examples/skills/php-check"}]
-
-PHP-check results (facts about *this* PHP CLI run):
-
-- **PHP 8.1+**: `PHP_VERSION=8.5.8` ✅ pass
-  Next step: none.
-
-- **curl extension**: `CURL_EXTENSION=loaded` ✅ pass
-  Next step: none.
-
-- **json extension**: `JSON_EXTENSION=loaded` ✅ pass
-  Next step: none.
-
-- **proc_open**: `PROC_OPEN=available` ✅ pass
-  Next step: none.
-
-All required checks pass, so the PHP CLI environment this script used meets the prerequisites. (It still doesn’t verify app config, network access, or whether an external API call succeeds.)
-
-> fine
-
-ok
-
-> quit
+config/analysis.yaml  Contains the max_words limit to read before execution
+scripts/analyze.py    Receives --max-words and text on stdin, then returns JSON
+scripts/report.py     Reads that JSON and returns a PASS or FAIL summary
 ```
 
-`skill` loads the instructions, `skill_resource` reads the reference, and `bash`
-executes the bundled script. Its output contains `PHP_VERSION`, `CURL_EXTENSION`,
-`JSON_EXTENSION` and `PROC_OPEN`; the agent explains any failed checks.
+Read `config/analysis.yaml`, then pass its `max_words` value as the required
+`--max-words` argument to `analyze.py`. Supply the exact input text through stdin.
+Inspect the returned JSON before supplying it through stdin to `report.py`.
+The default limit is 12 words. The report returns PASS when the word count is
+within the limit and FAIL when it exceeds the limit. Both are successful executions.
+All three resources must be present, with their relative paths preserved. The
+skill describes the two-step workflow without storage or tool instructions.
 
-Type `exit` or `quit` to stop. Restart the script after installing new skills.
-For integration into your application, see the [Quick Start](../README.md#quick-start).
+For the exact text `Ciao città` (no final newline), the analysis returns:
+
+```json
+{"words": 2, "lines": 1, "characters": 10, "max_words": 12}
+```
+
+The report returns `PASS: 2 words, limit 12.`
+
+Words are whitespace-separated tokens. Lines follow Python's `splitlines()`:
+empty input has zero lines and a final newline does not add an extra line.
+Characters are Unicode code points, including spaces and line endings.
+
+Database storage discovers skills, enumerates their resources and reads bytes;
+it does not prepare or execute scripts. `skill_script_prepare(name)` copies every
+stored resource into a fresh temporary directory, including `SKILL.md`, both
+scripts and configuration. It returns `directory` and relative `files` after
+successful preparation. The agent does not choose a resource list. Execution
+remains the job of a separate tool, and dependencies outside the skill are not
+installed. Prepared directories remain in `sys_get_temp_dir()` after the CLI
+session ends; cleanup, including partial copies after errors, belongs to the
+application or environment.
+
+Inspect the trace for `skill`, `skill_resource` reading `config/analysis.yaml`,
+then `skill_script_prepare` with name `text-stats` preparing all four resources.
+The first `bash` executes `analyze.py --max-words 12` from the returned directory.
+The agent should inspect its JSON before a separate `bash` call supplies it to
+`report.py`, then return the PASS or FAIL result. The skill leaves command
+construction to the agent. The skill specifies required files, UTF-8 standard
+input, JSON analysis and a text report. The
+application decides how to prepare resources and supply input to its execution
+tool. For this shell-based demo, `printf '%s' 'Ciao città'` preserves text without
+a final newline, whereas a shell heredoc adds one. These shell details belong to
+the integration, not to the skill instructions.
+
+## 3. Two filesystems and two databases
+
+```sh
+php examples/multiple.php
+```
+
+The example configures four independent storages:
+
+- `skills/`: `php-check` on the filesystem.
+- `.agents/skills/`: the installed `caveman` skill on the filesystem.
+- `skills.sqlite`: `dante`, identified by `dante`.
+- `text-stats.sqlite`: `text-stats`, identified by `text-stats`.
+
+Try **“usa la skill grill-me”** after registering a storage containing it.
+The trace must load `skill` with name `grill-me`, then `skill` with name `grilling`
+before interview questions. Read any further references one file per call,
+copying paths from the actual loaded contents. The skill documents stay generic.
+
+The agent-facing catalog contains only selected names and descriptions. When
+names repeat, the first configured storage with a valid document wins for all
+three tools. The repository retains each skill’s storage and identifier.
+
+Try these prompts in the same conversation:
+
+1. **“Usa php-check e spiegami i risultati.”**
+2. **“Usa caveman per spiegare l'universo.”**
+3. **“Use the dante skill: write a tercet about a traveller crossing a forest.”**
+4. **“Usa text-stats per analizzare il testo Ciao città.”**
+
+For `dante`, the trace should show `skill_resource` with name `dante` reading
+path `references/terzina.md`. The second verse should contain `copper lantern`,
+which appears only in that database reference.
+
+## SQLite setup and local verification
+
+### Live skill evaluations
+
+The evaluation suite now lives in [`evaluators/`](../evaluators/README.md) and
+uses Neuron's native runner. Run `composer evaluate` from the project root.
+It uses `examples/.env` and makes real model API calls. Offline checks remain
+available through `composer test` and `composer analyse`.
+
+### Database setup
+
+`sqlite-setup.php` creates two ignored local databases. It accepts optional paths:
+
+```sh
+php examples/sqlite-setup.php /tmp/dante.sqlite /tmp/text-stats.sqlite
+```
+
+The demos use the default paths under `examples/`. Every setup run deletes all
+rows from the `skills` table in each database and inserts the demo data: two
+resources for `dante` and four for `text-stats`. Custom rows and edits in these
+tables are discarded. Each database reset and insertion runs in one transaction;
+the database files and other tables are preserved.
+An older demo database with a `skill_name` column needs that column renamed to
+`skill_identifier`, or must be recreated before running setup.
+
+The application owns schema creation and updates. Each database has a `skills`
+table with non-null `skill_identifier`, `path` and `content` columns, and a
+composite primary key on `(skill_identifier, path)` with binary collation.
+`DatabaseSkillStorage` discovers skills, enumerates their resources and reads resource bytes.
+The setup targets SQLite; it is not a cross-database migration framework.
+
+Each storage reads identifiers within its own connection and table. The mixed
+example uses distinct databases; equal identifiers across storages are allowed
+and remain bound to their owning source.
+
+Run the local checks without model credentials or network calls:
+
+```sh
+vendor/bin/phpunit tests/DatabaseExampleTest.php
+```
+
+They verify database reads and prepare both Python scripts and the configuration
+in a temporary directory. Sequential execution covers Unicode, multiline, empty
+and final-newline inputs. Changing the configuration verifies whitespace counting
+in the first script and metric selection in the second. They require
+`python3`. They do not verify a live model's execution choices.
+
+Recorded live checks include failures and recovery attempts; see the
+[ticket 04 live report](../docs/live-checks/name-based-skills.md).
+
+For application integration, see the [Quick Start](../README.md#quick-start).

@@ -1,0 +1,96 @@
+<?php
+
+declare(strict_types=1);
+
+namespace NeuronAI\AgentSkills\Tools;
+
+use RuntimeException;
+use NeuronAI\AgentSkills\Resource;
+use NeuronAI\AgentSkills\SkillRepository;
+use NeuronAI\AgentSkills\Storage\LocalSkillStorageInterface;
+use NeuronAI\Tools\PropertyType;
+use NeuronAI\Tools\Tool;
+use NeuronAI\Tools\ToolOutput;
+use NeuronAI\Tools\ToolProperty;
+
+/** Make skill resources available locally for a separate execution tool. */
+class SkillScriptPrepareTool extends Tool
+{
+    protected string $name = 'skill_script_prepare';
+
+    protected ?string $description = 'Prepare a skill\'s files when its loaded instructions require running a script. '
+        .'Returns a local directory and relative file paths. '
+        .'Use the returned directory as the execution tool\'s working directory.';
+
+    public function __construct(private SkillRepository $repository)
+    {
+    }
+
+    protected function properties(): array
+    {
+        return [
+            new ToolProperty(
+                name: 'name',
+                type: PropertyType::STRING,
+                description: 'Skill name.',
+                required: true,
+                enum: array_values(array_unique($this->repository->names())),
+            ),
+        ];
+    }
+
+    /** @return array{directory: string, files: list<string>}|ToolOutput */
+    public function __invoke(string $name): array|ToolOutput
+    {
+        try {
+            $skill = $this->repository->getByName($name);
+            $inventory = $skill->resources();
+            $paths = array_map(static fn (Resource $resource): string => $resource->path(), $inventory);
+
+            $storage = $skill->storage();
+            if ($storage instanceof LocalSkillStorageInterface) {
+                $directory = $storage->directory($skill->identifier());
+                if (!str_starts_with($directory, '/') || str_starts_with($directory, '//')
+                    || strpbrk($directory, "\0\\") !== false || !is_dir($directory)) {
+                    throw new RuntimeException('The local skill directory is invalid or unavailable.');
+                }
+
+                return ['directory' => $directory, 'files' => $paths];
+            }
+
+            $resources = [];
+
+            foreach ($inventory as $resource) {
+                $path = $resource->path();
+                if ($path === '' || str_starts_with($path, '/') || str_contains($path, '\\')
+                    || str_contains($path, "\0") || preg_match('~(?:^|/)\.\.?(?:/|$)~', $path)
+                    || preg_match('~^[a-zA-Z][a-zA-Z0-9+.-]*:~', $path)) {
+                    throw new RuntimeException('Use literal relative file paths without dot segments.');
+                }
+
+                $resources[$path] = $resource->load();
+            }
+
+            $directory = sys_get_temp_dir().'/skill-script-'.bin2hex(random_bytes(16));
+            if (!@mkdir($directory, 0o700)) {
+                throw new RuntimeException('Could not create the temporary skill directory.');
+            }
+
+            foreach ($resources as $path => $content) {
+                $destination = $directory.'/'.$path;
+                $parent = dirname($destination);
+
+                if (!is_dir($parent) && !@mkdir($parent, 0o700, true)) {
+                    throw new RuntimeException('Could not create a directory for resource "'.$path.'".');
+                }
+                if (@file_put_contents($destination, $content) !== strlen($content)) {
+                    throw new RuntimeException('Could not save resource "'.$path.'".');
+                }
+            }
+
+            return ['directory' => $directory, 'files' => array_values(array_unique($paths))];
+        } catch (RuntimeException $exception) {
+            return ToolOutput::error($exception->getMessage());
+        }
+    }
+}

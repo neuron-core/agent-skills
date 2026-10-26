@@ -8,7 +8,7 @@ use RuntimeException;
 use Throwable;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 
-use function array_key_exists;
+use function array_filter;
 use function array_map;
 use function array_values;
 use function sort;
@@ -20,16 +20,16 @@ class SkillRepository
 {
     protected const MANIFEST = 'SKILL.md';
 
-    /** @var array<string, Skill> */
+    /** @var list<Skill> */
     protected array $catalog = [];
 
-    /** @var list<array{skill: string, message: string}> */
+    /** @var list<array{storage: SkillStorageInterface, skillIdentifier: string, message: string}> */
     protected array $diagnostics = [];
 
     /** @var array<int, SkillStorageInterface> */
     private array $pendingStorages = [];
 
-    /** @return list<array{skill: string, message: string}> */
+    /** @return list<array{storage: SkillStorageInterface, skillIdentifier: string, message: string}> */
     public function diagnostics(): array
     {
         $this->resolveCatalog();
@@ -62,18 +62,27 @@ class SkillRepository
     }
 
     /** @throws RuntimeException */
-    public function get(string $name): Skill
+    public function getByName(string $name): Skill
     {
-        $catalog = $this->resolveCatalog();
+        $matches = $this->findByName($name);
 
-        if (!array_key_exists($name, $catalog)) {
+        if ($matches === []) {
             throw new RuntimeException(sprintf('Skill "%s" is not available.', $name));
         }
 
-        return $catalog[$name];
+        return $matches[0];
     }
 
-    /** @return array<string, Skill> */
+    /** @return list<Skill> */
+    public function findByName(string $name): array
+    {
+        return array_values(array_filter(
+            $this->catalog(),
+            static fn (Skill $skill): bool => $skill->name() === $name,
+        ));
+    }
+
+    /** @return list<Skill> */
     private function resolveCatalog(): array
     {
         foreach ($this->pendingStorages as $index => $storage) {
@@ -96,34 +105,42 @@ class SkillRepository
 
     protected function buildCatalog(SkillStorageInterface $storage): void
     {
-        $skills = $storage->list();
-        sort($skills, SORT_STRING);
+        $skillIdentifiers = $storage->list();
+        sort($skillIdentifiers, SORT_STRING);
 
-        foreach ($skills as $skill) {
+        $seen = [];
+        foreach ($skillIdentifiers as $skillIdentifier) {
+            if (isset($seen[$skillIdentifier])) {
+                throw new RuntimeException(sprintf('Duplicate skill identifier "%s" within one storage.', $skillIdentifier));
+            }
+
+            $seen[$skillIdentifier] = true;
+        }
+
+        foreach ($skillIdentifiers as $skillIdentifier) {
             try {
-                $contents = $storage->read($skill, self::MANIFEST);
+                $contents = $storage->read($skillIdentifier, self::MANIFEST);
             } catch (RuntimeException $exception) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => $exception->getMessage()];
+                $this->diagnostics[] = ['storage' => $storage, 'skillIdentifier' => $skillIdentifier, 'message' => $exception->getMessage()];
                 continue;
             }
 
-            $parsed = (new SkillDocumentParser())->parse($contents, $skill);
+            $parsed = (new SkillDocumentParser())->parse($contents);
             foreach ($parsed['warnings'] as $message) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => $message];
+                $this->diagnostics[] = ['storage' => $storage, 'skillIdentifier' => $skillIdentifier, 'message' => $message];
             }
+
             $document = $parsed['document'];
             if ($document === null) {
                 continue;
             }
-            $name = $document['name'];
-            if (array_key_exists($name, $this->catalog)) {
-                $this->diagnostics[] = ['skill' => $skill, 'message' => sprintf(
-                    'Skill "%s" is shadowed by an earlier candidate with the same name.',
-                    $name,
-                )];
-                continue;
-            }
-            $this->catalog[$name] = new Skill($name, $document['description'], $storage, $skill);
+
+            $this->catalog[] = new Skill(
+                $document['name'],
+                $document['description'],
+                $skillIdentifier,
+                $storage
+            );
         }
     }
 }

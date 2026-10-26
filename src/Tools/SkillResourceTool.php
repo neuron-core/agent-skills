@@ -8,6 +8,7 @@ use RuntimeException;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\Tools\PropertyType;
 use NeuronAI\Tools\Tool;
+use NeuronAI\Tools\ToolOutput;
 use NeuronAI\Tools\ToolProperty;
 use NeuronAI\Tools\TrackByInputs;
 
@@ -17,7 +18,7 @@ class SkillResourceTool extends Tool
 
     protected string $name = 'skill_resource';
 
-    protected ?string $description = 'Read a text file referenced by a loaded skill. When its instructions require a file, read it before continuing. Pass the path relative to the skill directory.';
+    protected ?string $description = 'Read a file that loaded instructions explicitly ask you to read. Copy its complete path exactly.';
 
     public function __construct(protected SkillRepository $repository)
     {
@@ -29,25 +30,25 @@ class SkillResourceTool extends Tool
             new ToolProperty(
                 name: 'name',
                 type: PropertyType::STRING,
-                description: 'The name of the skill whose resource to read.',
+                description: 'Skill name.',
                 required: true,
-                enum: $this->repository->names(),
+                enum: array_values(array_unique($this->repository->names())),
             ),
             new ToolProperty(
                 name: 'path',
                 type: PropertyType::STRING,
-                description: 'Path named in the skill instructions, for example references/checks.md.',
+                description: 'Full path relative to the skill root, including directories, e.g. references/guide.md.',
                 required: true,
             ),
         ];
     }
 
-    public function __invoke(string $name, string $path): string
+    public function __invoke(string $name, string $path): string|ToolOutput
     {
         try {
-            return $this->repository->get($name)->readResource($path);
+            return $this->repository->getByName($name)->resource($path)->load();
         } catch (RuntimeException $exception) {
-            return $exception->getMessage();
+            return ToolOutput::error($exception->getMessage());
         }
     }
 }

@@ -17,7 +17,7 @@ Domain documentation uses the single-context layout. See `docs/agents/domain.md`
 
 ## Coding standards
 
-When writing or reviewing code, follow [docs/coding-standards.md](docs/coding-standards.md).
+When writing or reviewing code, follow [CODING_STANDARDS.md](CODING_STANDARDS.md).
 
 ## Releases
 
