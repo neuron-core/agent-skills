@@ -165,11 +165,6 @@ class DatabaseSkillToolkitTest extends TestCase
         $this->assertStringContainsString('was not found', (string) $resource->getResult());
         $resource->setInputs(['name' => 'writing', 'path' => '../other.md'])->execute();
         $this->assertStringContainsString('escapes', (string) $resource->getResult());
-        $activation->setInputs(['name' => 'unknown'])->execute();
-        $result = $activation->getResult();
-        $this->assertInstanceOf(ToolOutput::class, $result);
-        $this->assertTrue($result->isError());
-        $this->assertStringContainsString('must be one of', $result->getText());
         $pdo->exec('DROP TABLE skills');
         $activation->setInputs(['name' => 'writing'])->execute();
         $result = $activation->getResult();

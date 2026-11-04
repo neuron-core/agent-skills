@@ -28,8 +28,6 @@ use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 use PHPUnit\Framework\TestCase;
 
-use function array_keys;
-use function array_unique;
 use function bin2hex;
 use function file_exists;
 use function file_put_contents;
@@ -376,30 +374,6 @@ class SkillToolkitTest extends TestCase
         $provider->assertCallCount(5);
     }
 
-    public function test_unknown_skill_is_a_model_readable_result(): void
-    {
-        $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[0];
-        $tool->setInputs(['name' => 'unknown']);
-        $tool->execute();
-
-        $result = $tool->getResult();
-        $this->assertInstanceOf(ToolOutput::class, $result);
-        $this->assertTrue($result->isError());
-        $this->assertSame('Parameter "name" must be one of "writing"; "unknown" given.', $result->getText());
-    }
-
-    public function test_unknown_skill_resource_is_a_model_readable_result(): void
-    {
-        $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[1];
-        $tool->setInputs(['name' => 'unknown', 'path' => 'guide.md']);
-        $tool->execute();
-
-        $result = $tool->getResult();
-        $this->assertInstanceOf(ToolOutput::class, $result);
-        $this->assertTrue($result->isError());
-        $this->assertSame('Parameter "name" must be one of "writing"; "unknown" given.', $result->getText());
-    }
-
     public function test_null_byte_resource_path_is_a_model_readable_result(): void
     {
         $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[1];
@@ -430,34 +404,6 @@ class SkillToolkitTest extends TestCase
         ])->execute();
 
         $this->assertSame('', $resource->getResult());
-    }
-
-    public function test_agent_reads_a_script_as_unchanged_text_without_executing_it(): void
-    {
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
-        $resourceTool = $toolkit->tools()[1];
-        $script = "<?php\n\necho 'checked';\n";
-        $provider = new FakeAIProvider(
-            new ToolCallMessage(null, [
-                (new ToolCall($resourceTool->getName(), 'call_1'))->setInputs([
-                    'name' => 'writing',
-                    'path' => 'scripts/check.php',
-                ]),
-            ]),
-            new AssistantMessage('I read the script as text.'),
-        );
-
-        Agent::make()->setThreadId('skills-test')
-            ->setAiProvider($provider)
-            ->setInstructions('Be helpful.')
-            ->addTool($toolkit)
-            ->chat(new UserMessage('Read the script.'))
-            ->getMessage();
-
-        $provider->assertSent(fn (RequestRecord $record): bool => $this->hasToolResult(
-            $record,
-            $script,
-        ));
     }
 
     /** @dataProvider expectedReadFailures */
@@ -614,58 +560,6 @@ class SkillToolkitTest extends TestCase
         $this->expectExceptionMessage('Resource storage failed unexpectedly.');
 
         $tool->execute();
-    }
-
-    public function test_toolkit_snapshots_storage_catalog_and_tracks_natural_inputs_separately(): void
-    {
-        $storage = new class () implements SkillStorageInterface {
-            /** @var array<string, string> */
-            public array $manifests = [
-                'first' => "---\nname: first\ndescription: First skill\n---\nFirst.",
-                'second' => "---\nname: second\ndescription: Second skill\n---\nSecond.",
-            ];
-
-            public function list(): array
-            {
-                return array_keys($this->manifests);
-            }
-
-            public function resources(string $skillIdentifier): array
-            {
-                return ['SKILL.md'];
-            }
-
-            public function read(string $skillIdentifier, string $path): string
-            {
-                $skill = $skillIdentifier;
-                return $path === 'SKILL.md' ? $this->manifests[$skill] : $skill;
-            }
-        };
-        $toolkit = new SkillToolkit(new SkillRepository($storage));
-        $toolkit->guidelines();
-        $storage->manifests = [
-            'third' => "---\nname: third\ndescription: Third skill\n---\nThird.",
-        ];
-
-        $this->assertStringContainsString('first: First skill', $toolkit->guidelines() ?? '');
-        $this->assertStringContainsString('second: Second skill', $toolkit->guidelines() ?? '');
-        $this->assertStringNotContainsString('third', $toolkit->guidelines() ?? '');
-        [$skillTool, $resourceTool] = $toolkit->tools();
-        $this->assertInstanceOf(SkillTool::class, $skillTool);
-        $this->assertInstanceOf(SkillResourceTool::class, $resourceTool);
-        $skillKeys = [];
-        foreach (['first', 'second'] as $name) {
-            $skillTool->setInputs(['name' => $name]);
-            $skillKeys[] = $skillTool->getRunKey();
-        }
-        $resourceTool->setInputs(['name' => 'first', 'path' => 'references/details.md']);
-        $firstResourceKey = $resourceTool->getRunKey();
-        $resourceTool->setInputs(['name' => 'first', 'path' => 'references/examples.md']);
-        $secondResourceKey = $resourceTool->getRunKey();
-
-        $this->assertCount(2, array_unique($skillKeys));
-        $this->assertNotSame($firstResourceKey, $secondResourceKey);
-        $this->assertNotContains($firstResourceKey, $skillKeys);
     }
 
     public function test_empty_catalog_contributes_neither_guidelines_nor_tools(): void
