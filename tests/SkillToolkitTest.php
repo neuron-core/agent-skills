@@ -112,7 +112,7 @@ class SkillToolkitTest extends TestCase
 
     public function test_agent_discloses_catalog_and_loads_instructions_through_the_tool_loop(): void
     {
-        $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
+        $repository = new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'));
         $toolkit = new SkillToolkit($repository);
         $tools = $toolkit->tools();
         $this->assertCount(3, $tools);
@@ -160,7 +160,7 @@ class SkillToolkitTest extends TestCase
         file_put_contents($this->skillsRoot.'/secret.md', 'Outside secret.');
         symlink($this->skillsRoot.'/secret.md', $directory.'/secret-link.md');
         try {
-            $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+            $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
             $skillIdentifier = 'writing %25 café#';
             $provider = new FakeAIProvider(
                 new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['name' => 'writing'])]),
@@ -202,7 +202,7 @@ class SkillToolkitTest extends TestCase
 
     public function test_stream_loads_skills_and_resources_and_returns_the_final_message(): void
     {
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
         $provider = new FakeAIProvider(
             new ToolCallMessage(null, [new ToolCall('skill', 'activate', ['name' => 'writing'])]),
             new ToolCallMessage(null, [new ToolCall('skill_resource', 'read', [
@@ -239,7 +239,7 @@ class SkillToolkitTest extends TestCase
     public function test_diagnostics_stay_out_of_agent_context_while_tolerated_skill_loads(): void
     {
         file_put_contents($this->skillsRoot.'/writing/SKILL.md', "---\nname: écriture\ndescription: >-\n  Write\n  clearly\nlicense: MIT\n---\nUnicode skill body.");
-        $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
+        $repository = new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'));
         $toolkit = new SkillToolkit($repository);
         $this->assertSame([], $repository->diagnostics());
         $provider = new FakeAIProvider(
@@ -260,7 +260,7 @@ class SkillToolkitTest extends TestCase
     public function test_multiline_description_stays_on_one_catalog_line(): void
     {
         file_put_contents($this->skillsRoot.'/writing/SKILL.md', "---\nname: writing\ndescription: |-\n  First  line\n  Second line\n---\nBody");
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
 
         $guidelines = $toolkit->guidelines() ?? '';
         $this->assertStringContainsString('writing: First line Second line', $guidelines);
@@ -270,7 +270,7 @@ class SkillToolkitTest extends TestCase
     public function test_unusable_catalog_produces_diagnostics_but_no_tools_or_guidelines(): void
     {
         file_put_contents($this->skillsRoot.'/writing/SKILL.md', "---\nname: writing\ndescription: []\n---\nBody");
-        $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
+        $repository = new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'));
         $toolkit = new SkillToolkit($repository);
         $this->assertNotEmpty($repository->diagnostics());
         $this->assertSame([], $toolkit->tools());
@@ -279,7 +279,7 @@ class SkillToolkitTest extends TestCase
 
     public function test_agent_reads_a_resource_through_the_same_tool_loop(): void
     {
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
         $skillTool = $toolkit->tools()[1];
         $this->assertInstanceOf(SkillResourceTool::class, $skillTool);
         $this->assertSame(['name', 'path'], $skillTool->getRequiredProperties());
@@ -376,7 +376,7 @@ class SkillToolkitTest extends TestCase
 
     public function test_null_byte_resource_path_is_a_model_readable_result(): void
     {
-        $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[1];
+        $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'))))->tools()[1];
         $tool->setInputs(['name' => 'writing', 'path' => "resource\0.md"]);
         $tool->execute();
 
@@ -385,7 +385,7 @@ class SkillToolkitTest extends TestCase
 
     public function test_empty_resource_path_is_invalid_and_cannot_load_instructions(): void
     {
-        $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))))->tools()[1];
+        $tool = (new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'))))->tools()[1];
         $tool->setInputs(['name' => 'writing', 'path' => '']);
         $tool->execute();
 
@@ -396,7 +396,7 @@ class SkillToolkitTest extends TestCase
     public function test_empty_resource_text_is_a_valid_tool_result(): void
     {
         file_put_contents($this->skillsRoot.'/writing/references/style.md', '');
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
         $resource = $toolkit->tools()[1];
         $resource->setInputs([
             'name' => 'writing',
@@ -412,7 +412,7 @@ class SkillToolkitTest extends TestCase
         bool $invalidManifest,
         string $expected,
     ): void {
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
         $toolkit->guidelines();
 
         if ($toolIndex === 0) {
@@ -570,7 +570,7 @@ class SkillToolkitTest extends TestCase
         rmdir($this->skillsRoot.'/writing/references');
         unlink($this->skillsRoot.'/writing/SKILL.md');
         rmdir($this->skillsRoot.'/writing');
-        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/')));
+        $toolkit = new SkillToolkit(new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/')));
 
         $this->assertNull($toolkit->guidelines());
         $this->assertSame([], $toolkit->tools());
@@ -591,7 +591,7 @@ class SkillToolkitTest extends TestCase
     {
         $document = "---\nname: writing\ndescription: &summary Works # comment\nmetadata: {summary: *summary}\n---\nBody\n";
         file_put_contents($this->skillsRoot.'/writing/SKILL.md', $document);
-        $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
+        $repository = new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'));
         $toolkit = new SkillToolkit($repository);
         $this->assertSame([], $repository->diagnostics());
         $activation = $toolkit->tools()[0];
@@ -696,7 +696,7 @@ class SkillToolkitTest extends TestCase
             PHP;
         file_put_contents($directory.'/scripts/check.php', $script);
         try {
-            $repository = new SkillRepository(new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'));
+            $repository = new SkillRepository(new FileSystemSkillStorage($this->skillsRoot.'/'));
             $toolkit = new SkillToolkit($repository);
             $prepare = $toolkit->tools()[2];
             $prepare->setInputs(['name' => 'writing'])->execute();

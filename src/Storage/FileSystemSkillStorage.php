@@ -14,15 +14,11 @@ class FileSystemSkillStorage implements LocalSkillStorageInterface
     private string $baseDir;
     private StoragePaths $storagePaths;
 
-    public function __construct(string $base)
+    public function __construct(string $baseDir)
     {
-        if (str_starts_with($base, 'file://')) {
-            $base = rawurldecode(substr($base, 7));
-        }
+        $this->assertAbsoluteLocalPath($baseDir);
 
-        $this->assertAbsoluteLocalPath($base);
-
-        $directory = realpath($base);
+        $directory = realpath($baseDir);
         if ($directory === false || !is_dir($directory)) {
             throw new RuntimeException('Skill directory must exist and be a directory.');
         }
