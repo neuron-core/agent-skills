@@ -36,7 +36,7 @@ function runSkillDemo(SkillToolkit $skillToolkit): void
 
     $model = $_ENV['OPENAI_MODEL'] ?? getenv('OPENAI_MODEL');
     if (!is_string($model) || trim($model) === '') {
-        $model = 'gpt-5.4-nano';
+        $model = 'gpt-5.4-mini';
     }
 
     $agent = Agent::make()

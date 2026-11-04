@@ -59,7 +59,7 @@ $toolkit = SkillToolkit::make()
 
 $agent = Agent::make()
     ->setThreadId('quick-start')
-    ->setAiProvider(new OpenAI(key: 'your-api-key', model: 'gpt-5.4-nano'))
+    ->setAiProvider(new OpenAI(key: 'your-api-key', model: 'gpt-5.4-mini'))
     ->addTool($toolkit);
 
 $response = $agent->chat(new UserMessage(
