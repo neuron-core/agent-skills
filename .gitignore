@@ -6,6 +6,7 @@
 /.neuron/cache/evaluation/
 /examples/.env
 /examples/*.sqlite
+/examples/skills-lock.json
 .agents
 .claude
 .codex
