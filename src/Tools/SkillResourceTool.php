@@ -37,7 +37,7 @@ class SkillResourceTool extends Tool
             new ToolProperty(
                 name: 'path',
                 type: PropertyType::STRING,
-                description: 'Full path relative to the skill root, including directories, e.g. references/guide.md.',
+                description: 'Path exactly as written in the skill, relative to the skill root, keeping every directory segment.',
                 required: true,
             ),
         ];
