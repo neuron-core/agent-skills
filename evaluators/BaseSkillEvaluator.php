@@ -82,7 +82,7 @@ abstract class BaseSkillEvaluator extends BaseEvaluator
 
         return new $provider(
             key: $key,
-            model: is_string($model) && trim($model) !== '' ? $model : 'gpt-5.4-nano',
+            model: is_string($model) && trim($model) !== '' ? $model : 'gpt-5.4-mini',
             parameters: $parameters,
         );
     }
