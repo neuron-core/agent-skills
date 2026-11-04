@@ -30,8 +30,6 @@ class SkillRepositoryTest extends TestCase
 
         if ($accessor === 'getByName') {
             $repository->getByName('writing');
-        } elseif ($accessor === 'findByName') {
-            $repository->findByName('writing');
         } else {
             $repository->{$accessor}();
         }
@@ -52,10 +50,6 @@ class SkillRepositoryTest extends TestCase
         $this->assertCount(0, $later->reads);
         $this->assertSame(['writing', 'extra', 'writing'], $repository->names());
         $this->assertSame($selected, $repository->getByName('writing'));
-        $this->assertSame([
-            $selected,
-            $repository->catalog()[2],
-        ], $repository->findByName('writing'));
         $this->assertSame(1, $storage->listCalls);
         $this->assertSame([['writing', 'SKILL.md']], $storage->reads);
         $this->assertSame(1, $later->listCalls);
@@ -70,7 +64,6 @@ class SkillRepositoryTest extends TestCase
             'catalog' => ['catalog'],
             'names' => ['names'],
             'getByName' => ['getByName'],
-            'findByName' => ['findByName'],
             'diagnostics' => ['diagnostics'],
         ];
     }
@@ -259,11 +252,8 @@ class SkillRepositoryTest extends TestCase
         $repository->getByName('folder');
     }
 
-    /**
-     * @dataProvider nameSearches
-     * @param list<string> $identifiers
-     */
-    public function test_find_by_name_returns_all_exact_declared_name_matches(string $name, array $identifiers): void
+    /** @dataProvider nameSearches */
+    public function test_get_by_name_selects_the_first_exact_declared_name_match(string $name, ?string $identifier): void
     {
         $repository = new SkillRepository(
             new InMemorySkillStorage([
@@ -275,23 +265,22 @@ class SkillRepositoryTest extends TestCase
             ]),
         );
 
-        $matches = $repository->findByName($name);
-
-        $this->assertSame($identifiers, array_map(static fn (Skill $skill): string => $skill->identifier(), $matches));
-        foreach ($matches as $skill) {
-            $this->assertContains($skill, $repository->catalog());
+        if ($identifier === null) {
+            $this->expectException(RuntimeException::class);
         }
+
+        $this->assertSame($identifier, $repository->getByName($name)->identifier());
     }
 
-    /** @return array<string, array{string, list<string>}> */
+    /** @return array<string, array{string, ?string}> */
     public static function nameSearches(): array
     {
         return [
-            'missing name' => ['missing', []],
-            'single match' => ['review', ['a-unrelated']],
-            'matches across storages' => ['caveman', ['folder', 'z-copy']],
-            'case sensitive' => ['Caveman', []],
-            'identifier is not the declared name' => ['folder', []],
+            'missing name' => ['missing', null],
+            'single match' => ['review', 'a-unrelated'],
+            'first storage wins' => ['caveman', 'folder'],
+            'case sensitive' => ['Caveman', null],
+            'identifier is not the declared name' => ['folder', null],
         ];
     }
 
@@ -375,7 +364,7 @@ class SkillRepositoryTest extends TestCase
         $this->assertSame('a-invalid', $diagnostics[0]['skillIdentifier']);
         $this->assertSame($repository->getByName('shared')->storage(), $diagnostics[0]['storage']);
         $this->assertCount(1, $diagnostics);
-        $this->assertSame('Last body', $repository->findByName('shared')[1]->loadInstructions());
+        $this->assertSame('Last body', $repository->catalog()[1]->loadInstructions());
     }
 
     public function test_catalog_is_snapshotted_while_instruction_and_resource_reads_are_lazy(): void
