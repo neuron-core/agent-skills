@@ -8,7 +8,7 @@ composer evaluate
 
 Credentials and model come from `examples/.env` or the environment, using
 `OPENAI_API_KEY` and `OPENAI_MODEL`. Environment values take precedence. The
-fallback model is `gpt-5.4-nano`. The suite makes paid API requests.
+fallback model is `gpt-5.4-mini`. The suite makes paid API requests.
 
 Set `OPENAI_REASONING_EFFORT` to compare reasoning settings. When unset or empty,
 the provider uses the model's default. `OPENAI_API=responses` selects Neuron's
