@@ -6,7 +6,11 @@ namespace NeuronAI\AgentSkills;
 
 use RuntimeException;
 
-/** Validate storage identifiers and literal resource paths without URI conversion. */
+/**
+ * Validate skill identifiers and literal resource paths.
+ *
+ * @internal
+ */
 final class StoragePaths
 {
     /** @throws RuntimeException */
