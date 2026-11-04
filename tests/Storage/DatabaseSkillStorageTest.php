@@ -169,6 +169,26 @@ class DatabaseSkillStorageTest extends TestCase
         $this->assertSame('Numeric document', $storage->read('123', 'SKILL.md'));
     }
 
+    public function test_identifiers_and_paths_are_compared_case_sensitively(): void
+    {
+        $insert = $this->pdo->prepare('INSERT INTO skills VALUES (?, ?, ?)');
+        $insert->execute(['Writing', 'SKILL.md', 'Uppercase document']);
+        $insert->execute(['writing', 'References/guide.md', 'Uppercase guide']);
+        $storage = new DatabaseSkillStorage($this->pdo);
+
+        $this->assertSame(['Writing', 'writing'], $storage->list());
+        $this->assertSame(['SKILL.md'], $storage->resources('Writing'));
+        $this->assertSame(['References/guide.md', 'SKILL.md', 'references/guide.md'], $storage->resources('writing'));
+        $this->assertSame('Uppercase document', $storage->read('Writing', 'SKILL.md'));
+        $this->assertSame('Document', $storage->read('writing', 'SKILL.md'));
+        $this->assertSame('Uppercase guide', $storage->read('writing', 'References/guide.md'));
+        $this->assertSame('Guide', $storage->read('writing', 'references/guide.md'));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Resource "skill.md" was not found in skill "WRITING".');
+        $storage->read('WRITING', 'skill.md');
+    }
+
     public function test_empty_identifiers_fail_discovery_clearly(): void
     {
         $this->pdo->exec("INSERT INTO skills VALUES ('', 'SKILL.md', 'Unaddressable document')");
