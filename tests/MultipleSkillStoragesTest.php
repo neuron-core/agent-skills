@@ -178,7 +178,7 @@ class MultipleSkillStoragesTest extends TestCase
             ['skill_identifier' => 'folder', 'path' => 'guide.md', 'content' => 'Second guide'],
         ]);
         $repository = new SkillRepository($first, $second);
-        $matches = $repository->findByName('shared');
+        $matches = $repository->catalog();
         $this->assertCount(2, $matches);
         $this->assertSame('folder', $matches[0]->identifier());
         $this->assertSame('folder', $matches[1]->identifier());

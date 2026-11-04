@@ -8,7 +8,6 @@ use RuntimeException;
 use Throwable;
 use NeuronAI\AgentSkills\Storage\SkillStorageInterface;
 
-use function array_filter;
 use function array_map;
 use function array_values;
 use function sort;
@@ -64,22 +63,13 @@ class SkillRepository
     /** @throws RuntimeException */
     public function getByName(string $name): Skill
     {
-        $matches = $this->findByName($name);
-
-        if ($matches === []) {
-            throw new RuntimeException(sprintf('Skill "%s" is not available.', $name));
+        foreach ($this->catalog() as $skill) {
+            if ($skill->name() === $name) {
+                return $skill;
+            }
         }
 
-        return $matches[0];
-    }
-
-    /** @return list<Skill> */
-    public function findByName(string $name): array
-    {
-        return array_values(array_filter(
-            $this->catalog(),
-            static fn (Skill $skill): bool => $skill->name() === $name,
-        ));
+        throw new RuntimeException(sprintf('Skill "%s" is not available.', $name));
     }
 
     /** @return list<Skill> */

@@ -21,7 +21,7 @@ can coexist across storage registrations.
 The repository reads `SKILL.md` for each discovered identifier and parses its
 name and description to build the skill catalog. Each `Skill` retains that
 association and exposes `identifier()` and `storage()`.
-`getByName(name)` returns the first valid match; `findByName(name)` returns all
+`getByName(name)` returns the first valid match; `catalog()` retains all
 matches. `Skill::resource(path)` returns a `Resource` retaining the owning storage,
 skill identifier and literal relative path; `Skill::resources()` returns the
 inventory as a list of `Resource` objects, while

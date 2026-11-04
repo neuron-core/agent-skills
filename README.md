@@ -176,8 +176,7 @@ foreach ($skills->catalog() as $skill) {
     echo $skill->name().': '.$skill->description().PHP_EOL;
 }
 
-$skill = $skills->getByName('caveman');      // Selected skill, throws if unknown.
-$all = $skills->findByName('caveman');       // Every skill declaring this name.
+$skill = $skills->getByName('caveman');      // Throws if unknown.
 
 $skill->loadInstructions();                  // Body without YAML frontmatter.
 $skill->loadFrontmatter();                   // Parsed metadata as stdClass.

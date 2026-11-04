@@ -27,7 +27,7 @@ class ResourceTest extends TestCase
             $storages[] = new DatabaseSkillStorage($pdo);
         }
 
-        $matches = (new SkillRepository(...$storages))->findByName('shared');
+        $matches = (new SkillRepository(...$storages))->catalog();
         self::assertCount(2, $matches);
         foreach ($matches as $index => $skill) {
             $resources = $skill->resources();
