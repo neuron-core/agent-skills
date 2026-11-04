@@ -9,14 +9,15 @@ use RuntimeException;
 interface SkillStorageInterface
 {
     /**
-     * Return skill identifiers scoped to this storage, without URI encoding.
+     * Return the unique, non-empty skill identifiers in this storage.
      *
-     * @return string[]
+     * @return list<string>
      */
     public function list(): array;
 
     /**
-     * Return all literal relative file paths belonging to the selected skill, including SKILL.md.
+     * Return the literal resource paths of a skill, relative to its skill root and including SKILL.md.
+     * Paths are strings to pass to read(); Skill::resources() wraps them as Resource objects.
      *
      * @return list<string>
      * @throws RuntimeException
