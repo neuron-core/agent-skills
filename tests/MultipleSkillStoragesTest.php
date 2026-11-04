@@ -90,7 +90,7 @@ class MultipleSkillStoragesTest extends TestCase
         $insert->execute(['team caveman', 'SKILL.md', $databaseDocument]);
         $insert->execute(['team caveman', 'references/guide.md', 'Database guide.']);
         $insert->execute(['team caveman', 'database-only.md', 'Database content must not leak.']);
-        $localStorage = new FileSystemSkillStorage('file://'.$this->root.'/project/');
+        $localStorage = new FileSystemSkillStorage($this->root.'/project');
         $databaseStorage = new DatabaseSkillStorage($pdo);
         $repository = $databaseFirst
             ? new SkillRepository($databaseStorage, $localStorage)
@@ -203,8 +203,8 @@ class MultipleSkillStoragesTest extends TestCase
     {
         $projectDocument = $this->skill('project', '123', "'123'", 'Project');
         $this->skill('user', '123', "'123'", 'User');
-        $project = new FileSystemSkillStorage('file://'.$this->root.'/project'.'/');
-        $user = new FileSystemSkillStorage('file://'.$this->root.'/user'.'/');
+        $project = new FileSystemSkillStorage($this->root.'/project');
+        $user = new FileSystemSkillStorage($this->root.'/user');
         $this->assertSame(['123'], $project->list());
         foreach ([
             new SkillToolkit(new SkillRepository($project)),
@@ -235,9 +235,9 @@ class MultipleSkillStoragesTest extends TestCase
         $this->assertNull($toolkit->guidelines());
         $this->assertCount(0, $toolkit->tools());
 
-        $repository->addStorage(new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'));
+        $repository->addStorage(new FileSystemSkillStorage($this->root.'/project'));
         $selected = $repository->getByName('shared');
-        $this->assertSame($toolkit, $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/user'.'/')));
+        $this->assertSame($toolkit, $toolkit->fromStorage(new FileSystemSkillStorage($this->root.'/user')));
         $this->assertSame($selected, $repository->getByName('shared'));
         $this->assertSame($projectDocument, $selected->loadDocument());
         $this->assertSame($userDocument, $repository->getByName('extra')->loadDocument());
@@ -256,8 +256,8 @@ class MultipleSkillStoragesTest extends TestCase
 
         $this->assertNull($toolkit->guidelines());
         $this->assertCount(0, $toolkit->tools());
-        $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'));
-        $toolkit->fromStorage(new FileSystemSkillStorage('file://'.$this->root.'/user'.'/'));
+        $toolkit->fromStorage(new FileSystemSkillStorage($this->root.'/project'));
+        $toolkit->fromStorage(new FileSystemSkillStorage($this->root.'/user'));
 
         [$activation] = $toolkit->tools();
         $activation->setInputs(['name' => 'shared'])->execute();
@@ -269,8 +269,8 @@ class MultipleSkillStoragesTest extends TestCase
         $projectDocument = $this->skill('project', 'folder', 'shared', 'Project');
         $userDocument = $this->skill('user', 'folder', 'shared', 'User');
         file_put_contents($this->root.'/user/folder/user-only.md', 'Must not leak');
-        $project = new FileSystemSkillStorage('file://'.$this->root.'/project'.'/');
-        $user = new FileSystemSkillStorage('file://'.$this->root.'/user'.'/');
+        $project = new FileSystemSkillStorage($this->root.'/project');
+        $user = new FileSystemSkillStorage($this->root.'/user');
         $repository = new SkillRepository();
         $repository->addStorage($project, $user);
         $this->assertSame([['name' => 'shared', 'description' => 'Project'], ['name' => 'shared', 'description' => 'User']], array_map(
@@ -341,8 +341,8 @@ class MultipleSkillStoragesTest extends TestCase
         $projectDocument = $this->skill('project', 'same-folder', 'writing', 'Write prose');
         $userDocument = $this->skill('user', 'same-folder', 'analysis', 'Analyse evidence');
         $toolkit = new SkillToolkit(new SkillRepository(
-            new FileSystemSkillStorage('file://'.$this->root.'/project'.'/'),
-            new FileSystemSkillStorage('file://'.$this->root.'/user'.'/'),
+            new FileSystemSkillStorage($this->root.'/project'),
+            new FileSystemSkillStorage($this->root.'/user'),
         ));
         [$skill, $resource] = $toolkit->tools();
         $provider = new FakeAIProvider(
