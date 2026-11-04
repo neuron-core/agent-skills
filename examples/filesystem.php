@@ -5,7 +5,7 @@ declare(strict_types=1);
 use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
 use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
-require __DIR__.'/demo-chat.php';
+require __DIR__.'/bootstrap.php';
 
 $skillToolkit = SkillToolkit::make()->fromStorage(
     new FileSystemSkillStorage(__DIR__.'/skills'),
