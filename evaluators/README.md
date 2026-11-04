@@ -1,60 +1,117 @@
 # Skill evaluations
 
-Run the current production `SkillToolkit` against a real model:
+This suite checks whether a real model uses the production `SkillToolkit`
+correctly: it picks the right skill, reads its references, loads the skills it
+depends on and runs its scripts. Use it when you change the toolkit, its tool
+descriptions or its guidelines, or when you compare models and reasoning
+settings. Every case runs on both filesystem and SQLite storage.
 
-```sh
-composer evaluate
-```
+The suite calls the OpenAI API, so every run makes **paid requests**.
 
-Credentials and model come from `examples/.env` or the environment, using
-`OPENAI_API_KEY` and `OPENAI_MODEL`. Environment values take precedence. The
-fallback model is `gpt-5.4-mini`. The suite makes paid API requests.
+## What it measures
 
-Set `OPENAI_REASONING_EFFORT` to compare reasoning settings. When unset or empty,
-the provider uses the model's default. `OPENAI_API=responses` selects Neuron's
-Responses provider; the default remains Chat Completions. Nano and mini require
-Responses for function tools with `low` or higher. Run the same suite with `low`:
+A full run has 36 conversations, all in English, across six evaluators:
+
+| Evaluator | Cases | What passes |
+| --- | --- | --- |
+| `SkillLoadingEvaluator` | 6 requests that name `risk-review` | Exactly one `skill` call for the requested skill, with a successful, nonempty result. |
+| `SkillDiscoveryEvaluator` | 8 requests for a risk assessment or a recovery procedure that don't name the skill | The model picks the right skill from three alternatives, with exactly one `skill` call. |
+| `SkillDiscoveryWithResourceEvaluator` | 4 ticket prioritization requests | `skill` for `ticket-triage`, then `skill_resource` reading `references/priorities.md`, and nothing else. |
+| `SkillResourceEvaluator` | 6 tickets (P1 outage, P2 blocked payment, P3 export workaround) | The model reads the policy after loading the skill and answers with the expected priority. |
+| `SkillDependencyEvaluator` | 6 cases with an alias and a two-dependency review | The parent skill loads first, then every required dependency, in any order. Some cases split dependencies between filesystem and SQLite. |
+| `ScriptExecutionEvaluator` | 6 order CSVs (valid, negative amount, duplicate ID) | The model reads the format reference, prepares the skill, runs the validator and gets the expected findings. Retries are allowed, but the score drops to `1 / attempts`. |
+
+All cases except script execution fail if the model makes any extra tool call
+or prepares scripts it doesn't need. Repeated loads, missing prerequisites,
+calls batched together that should run one after another, and a claimed answer
+without the required tool calls also fail.
+
+### Limits
+
+The suite measures tool use and a few specific results. It does **not** judge
+the quality of a risk review or rollback plan. Priorities are checked by text
+matching. The cases show regressions, not a statistical reliability rate. They
+don't cover arbitrary skills, large catalogs, long conversation histories, or
+every possible phrasing.
+
+## Getting started
+
+You need the project's dev dependencies (`composer install`) and Python 3,
+which the fixture scripts use.
+
+1. Copy `examples/.env.example` to `examples/.env` and set `OPENAI_API_KEY`.
+   Values in the shell environment take precedence over the file.
+2. Run the suite from the repository root:
+
+   ```sh
+   composer evaluate
+   ```
+
+The console shows results grouped by evaluator, with each case's inputs,
+outputs and assertion failures. The same report is written to
+`evaluation-results.json`, which Git ignores.
+
+## Compare models and reasoning settings
+
+These environment variables choose the model:
+
+- `OPENAI_MODEL` defaults to `gpt-5.4-mini`.
+- `OPENAI_REASONING_EFFORT` is unset by default, which uses the model's own
+  default.
+- `OPENAI_API=responses` switches from Chat Completions to Neuron's Responses
+  provider.
+
+Nano and mini models need the Responses API to use function tools with `low`
+or higher reasoning effort:
 
 ```sh
 OPENAI_API=responses OPENAI_MODEL=gpt-5.4-nano OPENAI_REASONING_EFFORT=low composer evaluate
 OPENAI_API=responses OPENAI_MODEL=gpt-5.4-mini OPENAI_REASONING_EFFORT=low composer evaluate
 ```
 
-These comparisons also change APIs: Responses can normalize function schemas
-into strict mode, while Chat Completions defaults to non-strict function calling
+Switching API also changes function calling: Responses can turn function
+schemas into strict mode, while Chat Completions is non-strict by default
 ([OpenAI documentation](https://developers.openai.com/api/docs/guides/function-calling#strict-mode)).
+Every setting uses the same datasets and assertions.
 
-Every model and reasoning setting uses the same datasets and assertions.
+## Iterate on assertions without paying again
 
-## Structure
+Caching is off by default. With `--cache`, conversations whose sources haven't
+changed are served from `.neuron/cache/evaluation/`, and the assertions run
+again against them:
 
-- `BaseSkillEvaluator.php`: abstract base with provider creation, session execution
-  and cache dependencies.
-- The six concrete `*Evaluator.php` classes: scenarios discovered in alphabetical order.
-- `Assertions/`: custom assertions shared by the evaluators.
-- `Fixtures/SkillFixture.php`: fixture setup and cleanup.
-- `Fixtures/skills/`: skill documents and resources used by the scenarios.
-- `bootstrap.php`: Composer autoloading and environment loading.
+```sh
+composer evaluate -- --cache
+```
 
-## Fixtures
+Changes to `src/`, the evaluator base class, the bootstrap or the fixtures
+invalidate the cache. Changes to assertions don't. A cached conversation is not
+a new model run, so use `--fresh` after you change the model or other
+environment settings:
 
-The six English skills live in `Fixtures/skills/`, as ordinary `SKILL.md`
-documents with meaningful descriptions, references, configuration and scripts:
+```sh
+composer evaluate -- --fresh
+```
 
-- `risk-review`: identify risks and unresolved assumptions in a technical plan.
-- `rollback-plan`: describe recovery criteria, actions and verification.
-- `review-my-plan`: a one-line alias that explicitly requests `risk-review`.
-- `release-readiness`: combine `risk-review` and `rollback-plan`.
-- `ticket-triage`: classify support requests using a priority policy.
-- `csv-check`: validate orders against column and value requirements.
+## Fixture skills
 
-These are synthetic skills written in the style of ordinary installed skills.
-They contain no verification tokens, toolkit setup instructions or preparation
-hints. The alias deliberately preserves the explicit "Call the Skill tool"
-wording found in real router skills. No external skills or CLI packages are
-installed by the suite.
+The cases use six synthetic skills in `Fixtures/skills/`. They are ordinary
+`SKILL.md` documents with references, configuration and scripts:
 
-Each dataset item declares a small catalog and the storage for each skill:
+- `risk-review`: identifies risks and unresolved assumptions in a technical plan.
+- `rollback-plan`: describes recovery criteria, actions and verification.
+- `review-my-plan`: a one-line alias that tells the model to call the Skill tool
+  with `risk-review`, as real router skills do.
+- `release-readiness`: combines `risk-review` and `rollback-plan`.
+- `ticket-triage`: classifies support requests using a priority policy.
+- `csv-check`: validates orders against column and value requirements, using a
+  Python script that only needs the standard library.
+
+The skills contain no verification tokens or toolkit hints. Expected results
+stay in the evaluators. The suite never installs external skills and never
+changes installed skills or the example databases.
+
+Each dataset item lists the skills in its catalog and where each one is stored:
 
 ```php
 'skills' => [
@@ -64,130 +121,23 @@ Each dataset item declares a small catalog and the storage for each skill:
 ],
 ```
 
-`SkillFixture` stores this configuration in its constructor. Its explicit `setUp()`
-loads only the selected skills, using separate filesystem and database setup methods.
-It creates a temporary skill directory only when the map includes filesystem skills;
-a database-only fixture uses in-memory SQLite without a directory. Evaluators use
-`createFile()` for temporary inputs; the fixture removes them during `cleanUp()`.
-Assertions and expected results stay outside the skill documents.
-Installed skills and example databases are never changed. Cleanup removes the
-filesystem fixture and directories created by script preparation.
+`SkillFixture` loads only these skills. Filesystem skills go into a temporary
+directory, and database skills go into in-memory SQLite. Cleanup removes that
+directory, the temporary input files and the directories created by script
+preparation.
 
-## Cases
+## Add or change a case
 
-| Evaluator | Variants | What it measures |
-| --- | --- | --- |
-| `SkillDiscoveryEvaluator` | English requests for risk assessment and recovery procedures, each on filesystem and SQLite | Choosing and loading the relevant skill from three alternatives without its name appearing in the request; exactly one `skill` call. |
-| `SkillDiscoveryWithResourceEvaluator` | Two English requests for ticket prioritization, each on filesystem and SQLite | Discovering `ticket-triage`, then reading its required policy; exactly `skill`, then `skill_resource`. |
-| `SkillLoadingEvaluator` | Three requests for `risk-review`, each on filesystem and SQLite | Exactly one `skill` call with the requested name and a successful nonempty result. |
-| `SkillResourceEvaluator` | P1 outage, P2 blocked payment, P3 export workaround, each on filesystem and SQLite | Reading the policy after the skill and returning the expected priority. |
-| `ScriptExecutionEvaluator` | Filesystem and SQLite; valid orders, negative amount, duplicate ID | Reading import requirements, preparing the skill, executing the validator and obtaining the expected findings. |
-| `SkillDependencyEvaluator` | Alias and two-dependency review, with explicit prompts and storage maps | Loading the parent and required dependencies, including dependencies split between filesystem and SQLite. |
+- Each `*Evaluator.php` holds its own dataset, prompts, expected results and
+  assertions. The runner discovers evaluators in alphabetical order.
+- `BaseSkillEvaluator` builds the OpenAI provider and runs each item in a fresh
+  agent and thread, with `BashTool` and the production `SkillToolkit`. It isn't
+  discovered as an evaluator.
+- `Assertions/` holds the custom assertions. They inspect the trajectory and
+  check how a tool was used. `SkillWasLoaded`, `ResourceWasRead` and
+  `DependenciesWereLoaded` check successful, nonempty results in the right
+  order. `ScriptWasExecuted` checks the load, read, preparation and validator
+  run sequence. Exact sequences use Neuron's `TrajectoryMatches` in strict mode.
 
-There are 36 fresh conversations in a full run, all in English.
-All evaluators use `chat()`. These cases do not establish a
-statistical reliability rate.
-
-All fixture scripts use Python 3 and the standard library. Script execution is
-covered by `csv-check`: load the instructions, read `references/order-format.md`,
-prepare the files, then execute the validator against the supplied CSV file.
-The six cases cover valid orders, a negative amount and a duplicate order ID on
-both filesystem and SQLite storage. Assertions check the expected row-level
-findings. These cases use synthetic fixture files; they do not launch demos or
-read example databases.
-
-Loading, discovery and resource cases run every request with the expected skill on filesystem,
-then on SQLite, keeping the other catalog entries unchanged.
-Discovery covers three tasks, each with two English phrasings. These requests
-describe the work without naming any skill.
-The eight risk and recovery cases require exactly one tool call, loading the
-expected skill with a successful nonempty result. The four ticket cases live in
-`SkillDiscoveryWithResourceEvaluator` and require exactly `skill`, then
-`skill_resource`, successfully reading `references/priorities.md` after the skill's
-instructions return. Both evaluators reject extra calls and use the same checks
-for every item in their dataset. Task-specific outcome checks remain in the
-dedicated evaluators.
-
-The validation cases pass ordinary orders CSV files through user requests and
-check row-level errors. Assertions inspect the validator result. Prepared files
-are cleaned up after the conversation.
-
-## Assertions and limits
-
-Every concrete evaluator extends `BaseSkillEvaluator`, which extends Neuron's
-`BaseEvaluator`. The shared `provider()` builds the OpenAI provider from the
-environment when a conversation runs. The protected `runSession()` builds a fresh agent and thread
-with the real OpenAI provider, `BashTool`, and production `SkillToolkit`.
-The concrete classes keep explicit `getDataset`, `run` and `evaluate` methods,
-including their datasets, prompts, expected results and assertions. The abstract
-base is excluded from discovery.
-
-`runSession()` accepts a repository and user turns, calls `chat()` and returns the
-native `Trajectory`. It does not own the fixture or build report metadata. Each
-caller cleans its fixture in `finally`.
-An optional tool-call observer lets fixtures record script preparations for cleanup, including
-results that a later provider error prevents from entering chat history.
-
-The loading and both discovery evaluators use native `TrajectoryMatches` in strict
-mode for their exact sequence and `SkillWasLoaded` for the expected name and
-successful result. Discovery with a resource also uses `ResourceWasRead` for the
-required policy. The resource evaluator requires exactly `skill`, then
-`skill_resource`; `ResourceWasRead` checks successful nonempty results and requires
-the skill result before the resource is selected. The dependency evaluator checks
-the exact number of skill calls and successful loads of all required skills after
-the parent's instructions, allowing either sibling order. Every evaluator returns
-the trajectory directly, without building an expected `steps` array or preloading
-instruction texts. Script execution's six explicit dataset cases contain the CSV,
-prompt template and expected validator output.
-
-Custom assertions live in `Assertions/` and inspect native `Trajectory` records
-to check selected tool behavior:
-
-- `SkillWasLoaded`: successful activation with nonempty instructions, optionally matching an expected instruction body.
-- `ResourceWasRead`: successful nonempty reference contents after the owning skill is loaded.
-- `DependenciesWereLoaded`: successful nonempty instructions after the parent; siblings
-  may be loaded in either order, including in the same batch.
-- `ScriptWasExecuted`: exactly one successful skill load, reference read and
-  preparation, followed by one or more attempts of the required script. Each call
-  follows the previous result. The final attempt must exit successfully, use the
-  prepared directory and return the expected validator output. Its score is
-  `1 / attempts`: 1 means no retries, while lower passing scores indicate recovery.
-  Attempts remain visible in the trajectory and the assertion's result context.
-
-Non-script cases reject script preparation and every extra tool call. Script
-execution allows consecutive retries of the validator after the required reads
-and preparation. Repeated loads, missing prerequisites, batched calls, unrelated
-commands and an unsuccessful final attempt fail. Progress messages are allowed.
-Provider/setup exceptions and exceeding the tool execution limit are execution
-errors reported by the native runner.
-
-The suite measures tool use and selected task results. It does **not** judge the
-quality or completeness of a risk review or rollback plan. Loading, discovery,
-dependency and script execution cases check only tool calls and results. Priority
-checks use text matching; script execution checks the validator output against
-the expected findings for the supplied CSV.
-Prepared file contents are covered by tool tests rather than model evaluations.
-This does not establish performance on arbitrary skills, large catalogs,
-conversation histories, or every natural-language paraphrase.
-
-## Reports and offline checks
-
-The native runner groups results by evaluator and writes `evaluation-results.json`.
-It reports case inputs, outputs and assertion failures. Every evaluator returns a
-native trajectory.
-There is no shared report payload for model,
-storages, guidelines or usage. Provider exception messages are reduced to their
-exception class and provider code. Reports and evaluation caches are ignored by Git.
-
-Caching is off by default. Cached conversations are not new model executions.
-The base declares itself, production sources, bootstrap and fixture
-files in the inherited `cacheDependencies()`. Changes to those sources invalidate cached runs;
-assertion changes reuse recorded conversations and evaluate them again. Use
-`--fresh` when changing environment settings such as the model.
-
-```sh
-composer test
-```
-
-PHPUnit checks the custom assertions in `Assertions/` against recorded
-messages, without contacting a model.
+`composer test` checks the custom assertions against recorded messages,
+without calling a model.
