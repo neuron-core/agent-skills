@@ -24,7 +24,7 @@ php examples/sqlite-setup.php
 cp examples/.env.example examples/.env
 ```
 
-Set `OPENAI_API_KEY` in `examples/.env`. The default model is `gpt-5.4-nano`;
+Set `OPENAI_API_KEY` in `examples/.env`. The default model is `gpt-5.4-mini`;
 change `OPENAI_MODEL` if needed.
 
 For the filesystem and mixed examples, install `caveman` from `examples/`:
