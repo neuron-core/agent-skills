@@ -91,7 +91,10 @@ execution tool such as Neuron's `BashTool` alongside it.
 ```php
 use NeuronAI\Tools\Toolkits\FileSystem\BashTool;
 
-$agent->addTool(new BashTool())->addTool($toolkit);
+$agent = Agent::make()
+    ->setAiProvider(new OpenAI(key: 'your-api-key', model: 'gpt-5.4-mini'))
+    ->addTool($toolkit)          // Loads skills and prepares their files.
+    ->addTool(new BashTool());   // Runs the skill scripts.
 ```
 
 Filesystem skills run from their original directory. Skills from other storages
@@ -124,12 +127,12 @@ pick up newly added skills.
 
 `DatabaseSkillStorage` reads skills from an existing PDO connection. Each row
 stores one file of a skill; the complete skill document goes at path `SKILL.md`.
-You create and populate the table. For example, in SQLite:
+You create and populate the table, for example:
 
 ```sql
 CREATE TABLE skills (
-    skill_identifier TEXT NOT NULL,
-    path TEXT NOT NULL,
+    skill_identifier VARCHAR(255) NOT NULL,
+    path VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     UNIQUE (skill_identifier, path)
 );
@@ -150,8 +153,9 @@ $archive = new DatabaseSkillStorage($pdo, table: 'archived_skills');
 
 - `skill_identifier` groups the rows of one skill. It may differ from the
   `name` declared in `SKILL.md`.
-- `skill_identifier` and `path` must be compared case-sensitively, as with
-  SQLite's default `BINARY` collation.
+- `skill_identifier` and `path` must be compared case-sensitively. SQLite and
+  PostgreSQL do this by default; on MySQL, use a binary collation such as
+  `utf8mb4_bin`.
 - The adapter only reads: it never creates or migrates tables. Integration tests
   run on SQLite.
 
