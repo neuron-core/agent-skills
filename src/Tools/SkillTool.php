@@ -40,9 +40,7 @@ class SkillTool extends Tool
     public function __invoke(string $name): string|ToolOutput
     {
         try {
-            $instructions = $this->repository->getByName($name)->loadInstructions();
-
-            return trim($instructions) === '' ? $instructions : "Instructions loaded.\n\n".$instructions;
+            return $this->repository->getByName($name)->loadInstructions();
         } catch (RuntimeException $exception) {
             return ToolOutput::error($exception->getMessage());
         }

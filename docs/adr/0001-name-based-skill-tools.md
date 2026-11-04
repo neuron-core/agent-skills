@@ -10,6 +10,8 @@ Skill instructions refer to other skills by declared name. The toolkit exposes
 `skill_script_prepare(name)` to prepare all files of a skill for a separate
 execution tool. Frontmatter configures discovery and invocation; activation
 returns the instructions to follow rather than those configuration fields.
+The result is the instruction body itself, without a success prefix. The toolkit
+guidelines direct the agent to follow the returned instructions.
 
 The agent-facing skill catalog contains one name and description per selected
 skill. The repository selects the first valid document in configured storage

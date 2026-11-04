@@ -38,10 +38,9 @@ class SkillToolkit extends AbstractToolkit
         }
 
         return <<<'GUIDELINES'
-            Load each requested or relevant skill once with `skill`, then follow the returned instructions.
-            When instructions request another skill, call `skill` with that name next.
-            Read required references with `skill_resource`.
-            Before running a skill script, call `skill_script_prepare` after reading its required references.
+            Load each requested or relevant skill once with `skill`, even when you already know the answer. Follow its instructions before responding.
+            Use `skill_resource` to read required references, copying their full relative paths exactly.
+            For a required script, first read its references. After reading, call `skill_script_prepare`, then execute from its returned directory.
             GUIDELINES
             ."\n\nAvailable skills:\n".$this->formatCatalog($catalog);
     }

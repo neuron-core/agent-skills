@@ -7,14 +7,15 @@ status: accepted
 A supporting file can name the next required reference, so the agent must read
 its contents before choosing that next path. `skill_resource(name, path)` reads
 one literal path relative to the selected skill root and returns the complete
-file contents directly as text. The skill name and path are already in the call,
-so the result needs no collection wrapper.
+file contents directly as text.
 
-The toolkit's guidelines direct the agent to load skills with `skill(name)` when
-their instructions are needed to perform the task. When loaded instructions name
-another skill to call, the agent is directed to load it before performing steps
-that depend on it. Required resource paths are copied from instructions or references
-already read, preserving spaces, percent signs and Unicode.
+The toolkit's guidelines direct the agent to load requested or relevant skills
+once, even when it already knows the answer, then follow their instructions
+before responding.
+Required references are read with `skill_resource`, copying their full relative
+paths exactly. Paths are literal, so spaces, percent signs and Unicode are
+preserved. Before executing a required script, the agent reads its references,
+calls `skill_script_prepare`, then runs the script from the returned directory.
 
 The selected skill provides a `Resource` whose `load()` delegates each read to
 its owning storage and identifier.
