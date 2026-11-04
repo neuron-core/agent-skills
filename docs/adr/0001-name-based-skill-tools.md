@@ -8,8 +8,8 @@ Skill instructions refer to other skills by declared name. The toolkit exposes
 `skill(name)` to load the complete Markdown instructions without YAML frontmatter,
 `skill_resource(name, path)` to read one supporting file, and
 `skill_script_prepare(name)` to prepare all files of a skill for a separate
-execution tool. Frontmatter configures discovery and invocation; activation
-returns the instructions to follow rather than those configuration fields.
+execution tool. Frontmatter provides the name and description used for
+discovery; activation returns the instructions without frontmatter.
 The result is the instruction body itself, without a success prefix. The toolkit
 guidelines direct the agent to follow the returned instructions.
 
