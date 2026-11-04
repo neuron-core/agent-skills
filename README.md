@@ -187,9 +187,7 @@ foreach ($skill->resources() as $resource) {
 }
 ```
 
-Frontmatter fields such as `disable-model-invocation` and `user-invocable` are
-preserved but not enforced. Implement those restrictions in your application if
-you need them.
+Other frontmatter fields are preserved and available through `loadFrontmatter()`.
 
 ## Custom Storage
 
