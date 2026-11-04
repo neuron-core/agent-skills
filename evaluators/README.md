@@ -189,12 +189,5 @@ assertion changes reuse recorded conversations and evaluate them again. Use
 composer test
 ```
 
-PHPUnit verifies the assertions with recorded messages and exercises the real
-fixture tools and scripts on both storage backends without contacting a model.
-Execution tests use a concrete test evaluator with Neuron's `FakeAIProvider`
-through its existing provider
-interface and verify chat, conversation isolation, returned trajectories,
-tool execution, error reporting and cleanup. Production evaluations use the provider
-created by the inherited `provider()`.
-Regression checks reject repeated successful alias loads and missing dependencies,
-including the case where a plausible final response hides incomplete tool use.
+PHPUnit checks the custom assertions in `Assertions/` against recorded
+messages, without contacting a model.
