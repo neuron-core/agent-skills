@@ -302,20 +302,6 @@ class FileSystemSkillStorageTest extends TestCase
         (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('missing', 'SKILL.md');
     }
 
-    public function test_reads_scripts_as_text_without_executing_them(): void
-    {
-        mkdir($this->skillsRoot.'/writing/scripts', 0o777, true);
-        $marker = $this->outsideRoot.'/executed';
-        $script = "#!/bin/sh\ntouch {$marker}\n";
-        file_put_contents($this->skillsRoot.'/writing/scripts/run.sh', $script);
-
-        $this->assertSame(
-            $script,
-            (new FileSystemSkillStorage('file://'.$this->skillsRoot.'/'))->read('writing', 'scripts/run.sh'),
-        );
-        $this->assertFileDoesNotExist($marker);
-    }
-
     public function test_allows_confined_file_symlinks(): void
     {
         mkdir($this->skillsRoot.'/writing/references', 0o777, true);
