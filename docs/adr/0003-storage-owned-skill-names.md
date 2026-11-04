@@ -24,8 +24,8 @@ association and exposes `identifier()` and `storage()`.
 `getByName(name)` returns the first valid match; `findByName(name)` returns all
 matches. `Skill::resource(path)` returns a `Resource` retaining the owning storage,
 skill identifier and literal relative path; `Skill::resources()` returns the
-inventory as a list of `Resource` objects. The storage interface continues to
-return paths from its own `resources()` method.
+inventory as a list of `Resource` objects, while
+`SkillStorageInterface::resources()` returns the paths.
 
 Creating a `Resource` performs no read or existence check. Its `path()` returns
 the supplied path and `load()` reads current bytes through the retained storage,
@@ -36,9 +36,10 @@ skill association for subsequent reads.
 
 `StoragePaths` supplies independent `validateIdentifier(identifier)` and
 `normalizePath(path)` operations for the built-in storages. It has no storage
-dependency and performs no I/O. Validation returns no intermediate object;
-normalization returns the relative path string. Built-in storages validate and
-normalize during access, including calls made directly to the storage.
+dependency and performs no I/O. `validateIdentifier()` throws for an invalid
+identifier and returns nothing; `normalizePath()` returns the normalized relative
+path. Built-in storages validate and normalize during access, including calls
+made directly to the storage.
 
 Discovery is lazy and the repository retains its catalog after access. Each
 storage's identifiers are sorted before documents are read. Repeated identifiers
@@ -57,9 +58,7 @@ between the original directory and temporary copies, as defined in
 [ADR-0001](0001-name-based-skill-tools.md).
 
 Storages own discovery, enumeration and reads; the repository owns document
-parsing and name selection; the preparation tool owns resource copies. Local
-availability is an explicit capability, so the preparation tool needs neither
-backend-specific routing nor a separate remote-storage interface. Filesystem
-access confines resources to the canonical skill directory; database access
-uses the owning PDO connection, table and identifier. The database schema,
+parsing and name selection; the preparation tool owns resource copies.
+Filesystem access confines resources to the canonical skill directory; database
+access uses the owning PDO connection, table and identifier. The database schema,
 updates and exact identifier/path comparisons belong to the application.

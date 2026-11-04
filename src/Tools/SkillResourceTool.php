@@ -18,7 +18,7 @@ class SkillResourceTool extends Tool
 
     protected string $name = 'skill_resource';
 
-    protected ?string $description = 'Read a file that loaded instructions explicitly ask you to read. Copy its complete path exactly.';
+    protected ?string $description = 'Read a file explicitly referenced by a loaded skill or resource. Returns its complete contents as text.';
 
     public function __construct(protected SkillRepository $repository)
     {
