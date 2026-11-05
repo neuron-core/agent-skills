@@ -229,7 +229,7 @@ class DatabaseSkillToolkitTest extends TestCase
                     }
                     rmdir($prepared['directory']);
                 } else {
-                    $this->assertSame($directory.'/folder-id', $prepared['directory']);
+                    $this->assertSame(realpath($directory.'/folder-id'), $prepared['directory']);
                 }
                 $this->assertSame(['SKILL.md', 'guide.md', 'local-only.md'], array_values(array_diff(scandir($directory.'/folder-id'), ['.', '..'])));
             }

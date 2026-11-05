@@ -8,6 +8,7 @@ use RuntimeException;
 use NeuronAI\AgentSkills\Resource;
 use NeuronAI\AgentSkills\SkillRepository;
 use NeuronAI\AgentSkills\Storage\LocalSkillStorageInterface;
+use NeuronAI\AgentSkills\StoragePaths;
 use NeuronAI\Tools\PropertyType;
 use NeuronAI\Tools\Tool;
 use NeuronAI\Tools\ToolOutput;
@@ -20,8 +21,11 @@ class SkillScriptPrepareTool extends Tool
 
     protected ?string $description = 'Prepare a skill\'s files for execution. Returns a local directory and relative file paths.';
 
+    private StoragePaths $storagePaths;
+
     public function __construct(private SkillRepository $repository)
     {
+        $this->storagePaths = new StoragePaths();
     }
 
     protected function properties(): array
@@ -48,8 +52,7 @@ class SkillScriptPrepareTool extends Tool
             $storage = $skill->storage();
             if ($storage instanceof LocalSkillStorageInterface) {
                 $directory = $storage->directory($skill->identifier());
-                if (!str_starts_with($directory, '/') || str_starts_with($directory, '//')
-                    || strpbrk($directory, "\0\\") !== false || !is_dir($directory)) {
+                if (!$this->storagePaths->isAbsoluteLocalPath($directory) || !is_dir($directory)) {
                     throw new RuntimeException('The local skill directory is invalid or unavailable.');
                 }
 
@@ -69,7 +72,7 @@ class SkillScriptPrepareTool extends Tool
                 $resources[$path] = $resource->load();
             }
 
-            $directory = sys_get_temp_dir().'/skill-script-'.bin2hex(random_bytes(16));
+            $directory = rtrim(sys_get_temp_dir(), '/\\').DIRECTORY_SEPARATOR.'skill-script-'.bin2hex(random_bytes(16));
             if (!@mkdir($directory, 0o700)) {
                 throw new RuntimeException('Could not create the temporary skill directory.');
             }

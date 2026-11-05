@@ -16,7 +16,10 @@ class FileSystemSkillStorage implements LocalSkillStorageInterface
 
     public function __construct(string $baseDir)
     {
-        $this->assertAbsoluteLocalPath($baseDir);
+        $this->storagePaths = new StoragePaths();
+        if (!$this->storagePaths->isAbsoluteLocalPath($baseDir)) {
+            throw new RuntimeException('Skill directory must be an absolute local path.');
+        }
 
         $directory = realpath($baseDir);
         if ($directory === false || !is_dir($directory)) {
@@ -24,15 +27,6 @@ class FileSystemSkillStorage implements LocalSkillStorageInterface
         }
 
         $this->baseDir = $directory;
-        $this->storagePaths = new StoragePaths();
-    }
-
-    private function assertAbsoluteLocalPath(string $path): void
-    {
-        if (!str_starts_with($path, '/') || str_starts_with($path, '//')
-            || strpbrk($path, "\0\\") !== false) {
-            throw new RuntimeException('Skill directory must be an absolute local path.');
-        }
     }
 
     public function list(): array

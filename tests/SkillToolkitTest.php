@@ -153,6 +153,7 @@ class SkillToolkitTest extends TestCase
         ));
     }
 
+    /** @group posix */
     public function test_literal_identifier_loads_instructions_and_resources_and_reports_confined_read_failures(): void
     {
         $directory = $this->skillsRoot.'/writing %25 café#';
@@ -682,6 +683,7 @@ class SkillToolkitTest extends TestCase
         $this->assertSame('Lazy guide', $resource->getResult());
     }
 
+    /** @group posix */
     public function test_host_tool_executes_from_prepared_local_directory_with_neighboring_binary_asset(): void
     {
         $directory = $this->skillsRoot.'/writing %25 café#';
@@ -701,7 +703,7 @@ class SkillToolkitTest extends TestCase
             $prepare = $toolkit->tools()[2];
             $prepare->setInputs(['name' => 'writing'])->execute();
             $prepared = json_decode($prepare->getResult(), true, flags: JSON_THROW_ON_ERROR);
-            $this->assertSame($directory, $prepared['directory']);
+            $this->assertSame(realpath($directory), $prepared['directory']);
             $nativePath = $prepared['directory'];
             $host = new BashTool();
             $provider = new FakeAIProvider(
@@ -732,7 +734,7 @@ class SkillToolkitTest extends TestCase
                             $result = json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR);
                             return $result['status'] === 'success'
                                 && $result['output'] === hash('sha256', $asset)
-                                && $result['working_directory'] === $directory;
+                                && $result['working_directory'] === realpath($directory);
                         }
                     }
                 }
