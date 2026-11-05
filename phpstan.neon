@@ -3,5 +3,7 @@ parameters:
     paths:
         - src
         - tests
+        - evaluators
+        - evaluation.php
     tmpDir: .phpstan.cache
     treatPhpDocTypesAsCertain: false

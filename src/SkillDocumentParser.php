@@ -15,7 +15,7 @@ final class SkillDocumentParser
     /**
      * @return array{document: array{name: string, description: string, body: string, frontmatter: stdClass}|null, warnings: list<string>}
      */
-    public function parse(string $contents, string $skill): array
+    public function parse(string $contents): array
     {
         $parts = $this->extractParts($contents);
         if ($parts === null) {
@@ -61,9 +61,6 @@ final class SkillDocumentParser
         }
         if (mb_strlen($name, 'UTF-8') > 64) {
             $warnings[] = 'name exceeds 64 characters.';
-        }
-        if ($name !== $skill) {
-            $warnings[] = 'Declared name does not match the storage identifier.';
         }
         if (mb_strlen($description, 'UTF-8') > 1024) {
             $warnings[] = 'description exceeds 1024 characters.';

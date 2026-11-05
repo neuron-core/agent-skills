@@ -2,6 +2,8 @@
 /tests export-ignore
 /docs export-ignore
 /examples export-ignore
+/evaluators export-ignore
+/evaluation.php export-ignore
 
 # Development and agent configuration
 /.scratch export-ignore
@@ -10,7 +12,8 @@
 /.gitattributes export-ignore
 /AGENTS.md export-ignore
 /CLAUDE.md export-ignore
-/CONTEXT.md export-ignore
+/CODING_STANDARDS.md export-ignore
+/GLOSSARY.md export-ignore
 /skills-lock.json export-ignore
 /phpstan.neon export-ignore
 /phpunit.xml.dist export-ignore

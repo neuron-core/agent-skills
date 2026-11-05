@@ -17,7 +17,7 @@ make them available to the agent through a single toolkit.
 The library handles skill discovery and provides tools for loading instructions
 and supporting resources when needed. It follows the open
 [Agent Skills specification](https://agentskills.io/specification) and supports
-local directories as well as custom storage.
+local directories, PDO databases and custom storage.
 
 ![Neuron Agent Skills Package](docs/cover.png)
 
@@ -59,7 +59,7 @@ $toolkit = SkillToolkit::make()
 
 $agent = Agent::make()
     ->setThreadId('quick-start')
-    ->setAiProvider(new OpenAI(key: 'your-api-key', model: 'gpt-5.4-nano'))
+    ->setAiProvider(new OpenAI(key: 'your-api-key', model: 'gpt-5.4-mini'))
     ->addTool($toolkit);
 
 $response = $agent->chat(new UserMessage(
@@ -76,53 +76,96 @@ echo $response->getMessage()->getContent();
 
 ## How Skills Work
 
-The agent initially sees each skill's name, description and location. When a
-skill is relevant to the task, it uses `skill` to load its instructions. If those
-instructions reference supporting files, it can read them with `skill_resource`.
-This keeps the initial context small while making the full skill available when
-needed.
-
-The toolkit registers two tools:
+The agent starts with only the name and description of each skill. When a
+skill is relevant, it loads the full instructions on demand:
 
 | Tool | Purpose |
 | --- | --- |
-| `skill` | Load the complete `SKILL.md` for a named skill. |
-| `skill_resource` | Read a supporting text file relative to that skill. |
+| `skill` | Load a skill's instructions by its declared `name`. |
+| `skill_resource` | Read one supporting file, such as `references/guide.md`, from that skill. |
+| `skill_script_prepare` | Make the skill's files available in a local directory before running its scripts. |
 
-Skills can also include scripts. To execute them, register an execution tool,
-such as Neuron's `BashTool`, alongside the toolkit. The library supplies the
-instructions and resource locations; your application controls execution.
-
-## Multiple Skill Directories
-
-Configure the storages before registering the toolkit on your agent. Pass them
-in precedence order. For example, combine bundled skills
-with skills installed by the CLI:
+Skills can include scripts. The toolkit does not execute them: register an
+execution tool such as Neuron's `BashTool` alongside it.
 
 ```php
-$toolkit = SkillToolkit::make()
-    ->fromStorage(
-        new FileSystemSkillStorage(__DIR__.'/skills'),
-        new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
-    );
+use NeuronAI\Tools\Toolkits\FileSystem\BashTool;
+
+$agent = Agent::make()
+    ->setAiProvider(new OpenAI(key: 'your-api-key', model: 'gpt-5.4-mini'))
+    ->addTool($toolkit)          // Loads skills and prepares their files.
+    ->addTool(new BashTool());   // Runs the skill scripts.
 ```
 
-The first usable skill with a given declared name wins. Instructions and
-resources are read from that selected source. Restart the agent or recreate the
-toolkit after adding skills to an existing directory: each storage is discovered
-on first access and its catalog is then reused.
+Filesystem skills run from their original directory. Skills from other storages
+are copied to a new directory under `sys_get_temp_dir()`; the toolkit does not
+delete these copies.
+
+## Multiple Sources
+
+Pass several storages to combine bundled skills, CLI-installed skills and
+database skills:
+
+```php
+use NeuronAI\AgentSkills\Storage\DatabaseSkillStorage;
+
+$toolkit = SkillToolkit::make()->fromStorage(
+    new FileSystemSkillStorage(__DIR__.'/skills'),
+    new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
+    new DatabaseSkillStorage(new PDO('sqlite:'.__DIR__.'/skills.sqlite')),
+);
+```
+
+If two skills declare the same name, the agent gets the one from the first
+storage. Its instructions and files always come from that source, with no
+fallback to another skill with the same name.
+
+Skills are discovered on first use and then cached. Recreate the toolkit to
+pick up newly added skills.
+
+## Database Storage
+
+`DatabaseSkillStorage` reads skills from an existing PDO connection. Each row
+stores one file of a skill; the complete skill document goes at path `SKILL.md`.
+You create and populate the table, for example:
+
+```sql
+CREATE TABLE skills (
+    skill_identifier VARCHAR(255) NOT NULL,
+    path VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    UNIQUE (skill_identifier, path)
+);
+
+INSERT INTO skills VALUES
+    ('caveman', 'SKILL.md', '---
+name: caveman
+description: Answer in terse caveman speech.
+---
+Use short words. Drop articles.'),
+    ('caveman', 'references/examples.md', 'Big rock fall. Many dino gone.');
+```
+
+```php
+$storage = new DatabaseSkillStorage($pdo);                      // table "skills"
+$archive = new DatabaseSkillStorage($pdo, table: 'archived_skills');
+```
+
+- `skill_identifier` groups the rows of one skill. It may differ from the
+  `name` declared in `SKILL.md`.
+- `skill_identifier` and `path` must be compared case-sensitively. SQLite and
+  PostgreSQL do this by default; on MySQL, use a binary collation such as
+  `utf8mb4_bin`.
+- The adapter only reads: it never creates or migrates tables. Integration tests
+  run on SQLite.
 
 ## Accessing Skills Directly
 
-Share one `SkillRepository` between the toolkit and other application features,
-for example slash commands and explicit skill invocation. `catalog()` returns a
-list of `Skill` objects; `get($name)` returns the selected skill or throws a
-`RuntimeException` when the name is unavailable.
+Share a `SkillRepository` between the toolkit and other features, such as slash
+commands or a skill picker:
 
 ```php
 use NeuronAI\AgentSkills\SkillRepository;
-use NeuronAI\AgentSkills\Storage\FileSystemSkillStorage;
-use NeuronAI\AgentSkills\Tools\SkillToolkit;
 
 $skills = new SkillRepository(
     new FileSystemSkillStorage(__DIR__.'/.agents/skills'),
@@ -130,62 +173,70 @@ $skills = new SkillRepository(
 $agent->addTool(new SkillToolkit($skills));
 
 foreach ($skills->catalog() as $skill) {
-    echo $skill->name().': '.$skill->description();
+    echo $skill->name().': '.$skill->description().PHP_EOL;
 }
 
-$skill = $skills->get('caveman');
-$frontmatter = $skill->readFrontmatter();   // Parsed YAML metadata as stdClass.
-$instructions = $skill->readInstructions(); // Body without YAML frontmatter.
-$document = $skill->readDocument();         // Complete original SKILL.md.
-$location = $skill->location();             // Host-accessible location or null.
-$resource = $skill->readResource('references/guide.md');
+$skill = $skills->getByName('caveman');      // Throws if unknown.
+
+$skill->loadInstructions();                  // Body without YAML frontmatter.
+$skill->loadFrontmatter();                   // Parsed metadata as stdClass.
+$skill->resource('references/guide.md')->load();
+
+foreach ($skill->resources() as $resource) {
+    echo $resource->path().PHP_EOL;
+}
 ```
 
-Optional and extension metadata is preserved when a skill is loaded. Fields
-such as `disable-model-invocation` and `user-invocable` are not enforced by this
-library. Applications that depend on invocation restrictions must implement
-them in their host agent.
+Other frontmatter fields are preserved and available through `loadFrontmatter()`.
 
 ## Custom Storage
 
 Implement [`SkillStorageInterface`](src/Storage/SkillStorageInterface.php) to
-load skills from another backend. It defines three methods:
+load skills from another backend:
 
-- `list()` returns the available storage identifiers.
-- `read($skill, $path)` reads a UTF-8 text file relative to a skill.
-- `location($skill)` returns a base location accessible to host tools, or `null`
-  when none is available.
+```php
+interface SkillStorageInterface
+{
+    /** @return list<string> Skill identifiers in this storage. */
+    public function list(): array;
 
-Use storage identifiers for reads and locations, even when they differ from the
-declared skill names. Remote locations require host tools that can access them.
-Throw `RuntimeException` for expected read failures, such as missing or
-unreadable resources.
+    /** @return list<string> Relative paths of every file, including SKILL.md. */
+    public function resources(string $skillIdentifier): array;
+
+    public function read(string $skillIdentifier, string $path): string;
+}
+```
+
+Throw `RuntimeException` for missing or unreadable files. If the files are
+already on the local disk, also implement
+[`LocalSkillStorageInterface`](src/Storage/LocalSkillStorageInterface.php) so
+scripts run from the original directory instead of a temporary copy.
+[`StoragePaths`](src/StoragePaths.php) helps validate identifiers and normalize
+paths.
 
 ## Error Handling
 
-Invalid or unreadable skills are skipped. Use `$skills->diagnostics()` to inspect
-loading problems and warnings.
-
-The tools report read failures to the agent. When accessing skills directly,
-catch `RuntimeException` for unavailable skills, documents or resources.
+Invalid or unreadable skills are skipped; inspect `$skills->diagnostics()` to
+see why. Tools report read failures to the agent. When accessing skills
+directly, catch `RuntimeException`.
 
 ## Runnable Examples
 
-See the [interactive demo guide](examples/README.md) for setup instructions and
-sample conversations using skills and supporting resources.
+The [examples](examples/README.md) include interactive demos with filesystem,
+database and mixed storages, including skills that run scripts.
 
 ## Contributing
 
 Report bugs and propose changes through [GitHub Issues](https://github.com/neuron-core/agent-skills/issues)
-and pull requests. From the repository root, run the development checks with:
+and pull requests. Development requires PDO and `pdo_sqlite`:
 
 ```sh
 composer install
-composer check
+composer test
+composer analyse
 ```
 
-`composer check` runs PHPUnit and PHPStan without requiring an API key.
-CI covers PHP 8.1–8.5, multiple Neuron AI versions and Symfony YAML compatibility.
+Neither command requires an API key.
 
 ## License
 

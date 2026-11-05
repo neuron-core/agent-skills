@@ -2,7 +2,11 @@
 /composer.lock
 /.phpunit.cache/
 /.phpstan.cache/
+/evaluation-results.json
+/.neuron/cache/evaluation/
 /examples/.env
+/examples/*.sqlite
+/examples/skills-lock.json
 .agents
 .claude
 .codex
