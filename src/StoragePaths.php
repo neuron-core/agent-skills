@@ -7,7 +7,7 @@ namespace NeuronAI\AgentSkills;
 use RuntimeException;
 
 /**
- * Validate skill identifiers and literal resource paths.
+ * Validate skill identifiers, literal resource paths and local directories.
  *
  * @internal
  */
@@ -58,9 +58,26 @@ final class StoragePaths
         return implode('/', $segments);
     }
 
+    /**
+     * Whether a path is an absolute local path on the platform using the given directory separator:
+     * "/srv/skills" on POSIX, "C:\srv\skills" or "C:/srv/skills" on Windows. Network paths are rejected.
+     */
+    public function isAbsoluteLocalPath(string $path, string $separator = DIRECTORY_SEPARATOR): bool
+    {
+        if (str_contains($path, "\0")) {
+            return false;
+        }
+
+        if ($separator === '\\') {
+            return preg_match('~^[A-Za-z]:[\\\\/]~', $path) === 1;
+        }
+
+        return str_starts_with($path, '/') && !str_starts_with($path, '//') && !str_contains($path, '\\');
+    }
+
     private function isSingleSegment(string $identifier): bool
     {
         return $identifier !== '' && $identifier !== '.' && $identifier !== '..'
-            && !str_contains($identifier, '/') && !str_contains($identifier, "\0");
+            && strpbrk($identifier, "/\\\0") === false;
     }
 }

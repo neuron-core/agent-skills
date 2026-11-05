@@ -28,7 +28,7 @@ class SkillStoragePathTest extends TestCase
         foreach ([
             'my guide.md' => 'Space',
             'my%20guide.md' => 'Literal percent',
-            'café #1?.md' => 'Unicode and delimiters',
+            'café #1.md' => 'Unicode and delimiters',
             'a+b.md' => 'Plus',
             '%2e%2e.md' => 'Literal encoded dots',
         ] as $name => $content) {
@@ -66,7 +66,7 @@ class SkillStoragePathTest extends TestCase
             foreach ([
                 'references/my guide.md' => 'Space',
                 'references/my%20guide.md' => 'Literal percent',
-                'references/café #1?.md' => 'Unicode and delimiters',
+                'references/café #1.md' => 'Unicode and delimiters',
                 'references/a+b.md' => 'Plus',
                 'references/%2e%2e.md' => 'Literal encoded dots',
                 'references/../references/my guide.md' => 'Space',

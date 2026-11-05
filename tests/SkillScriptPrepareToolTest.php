@@ -50,7 +50,7 @@ class SkillScriptPrepareToolTest extends TestCase
         self::assertSame(['name'], array_keys($tool->getInputSchema()['properties']));
         self::assertSame(['declared'], $tool->getInputSchema()['properties']['name']['enum']);
         $tool->setInputs(['name' => 'declared'])->execute();
-        self::assertSame(['directory' => $directory, 'files' => ['SKILL.md', 'assets/data.bin']], json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR));
+        self::assertSame(['directory' => realpath($directory), 'files' => ['SKILL.md', 'assets/data.bin']], json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR));
         self::assertSame($document, file_get_contents($directory.'/SKILL.md'));
         self::assertSame("\0\xff", file_get_contents($directory.'/assets/data.bin'));
     }
@@ -274,7 +274,7 @@ class SkillScriptPrepareToolTest extends TestCase
             if ($message instanceof ToolResultMessage) {
                 foreach ($message->getToolCalls() as $tool) {
                     self::assertSame([
-                        'directory' => $this->root.'/identifier', 'files' => ['SKILL.md'],
+                        'directory' => realpath($this->root.'/identifier'), 'files' => ['SKILL.md'],
                     ], json_decode($tool->getResult(), true, flags: JSON_THROW_ON_ERROR));
                     $found = true;
                 }

@@ -51,3 +51,18 @@ jobs:
       - run: composer update --with "symfony/yaml:${{ matrix.yaml }}" --no-interaction --prefer-dist
       - run: composer test
       - run: composer analyse
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: curl, dom, mbstring, pdo, pdo_sqlite, xml, xmlwriter
+          tools: composer:v2
+          coverage: none
+      - run: composer update --no-interaction --prefer-dist
+      - run: composer test -- --exclude-group posix
+      - run: composer analyse

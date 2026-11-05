@@ -18,6 +18,7 @@ use function is_dir;
 use function is_readable;
 use function mkdir;
 use function random_bytes;
+use function realpath;
 use function rmdir;
 use function sprintf;
 use function str_repeat;
@@ -56,6 +57,7 @@ class FileSystemSkillStorageTest extends TestCase
         $this->assertSame(['SKILL.md', 'references/città %20.md'], $storage->resources('writing'));
     }
 
+    /** @group posix */
     public function test_resources_follow_confined_links_without_recursing_through_cycles(): void
     {
         mkdir($this->skillsRoot.'/writing/references', 0o777, true);
@@ -70,6 +72,7 @@ class FileSystemSkillStorageTest extends TestCase
         $this->assertSame(['SKILL.md', 'docs/guide.md', 'guide-link.md', 'references/guide.md'], $storage->resources('writing'));
     }
 
+    /** @group posix */
     public function test_resources_preserve_symlinked_skill_roots(): void
     {
         mkdir($this->outsideRoot.'/shared/references', 0o777, true);
@@ -78,10 +81,13 @@ class FileSystemSkillStorageTest extends TestCase
         symlink($this->outsideRoot.'/shared', $this->skillsRoot.'/writing');
 
         $this->assertSame(['SKILL.md', 'references/guide.md'], (new FileSystemSkillStorage($this->skillsRoot))->resources('writing'));
-        $this->assertSame($this->outsideRoot.'/shared', (new FileSystemSkillStorage($this->skillsRoot))->directory('writing'));
+        $this->assertSame(realpath($this->outsideRoot.'/shared'), (new FileSystemSkillStorage($this->skillsRoot))->directory('writing'));
     }
 
-    /** @dataProvider escapingResourceLinks */
+    /**
+     * @dataProvider escapingResourceLinks
+     * @group posix
+     */
     public function test_resources_reject_links_outside_the_skill(bool $directory): void
     {
         mkdir($this->skillsRoot.'/writing');
@@ -169,7 +175,7 @@ class FileSystemSkillStorageTest extends TestCase
     {
         return [
             'space' => ['team skills'],
-            'URI delimiters' => ['team #1?'],
+            'hash' => ['team #1'],
             'literal percent sequence' => ['team %20'],
             'Unicode and punctuation' => ["café [draft] + it's ready"],
         ];
@@ -187,7 +193,7 @@ class FileSystemSkillStorageTest extends TestCase
         $this->assertSame([$skillIdentifier], $storage->list());
         $this->assertSame('Original document.', $storage->read($skillIdentifier, 'SKILL.md'));
         $this->assertSame('Literal percent filename.', $storage->read($skillIdentifier, 'references/%2e%2e.md'));
-        $this->assertSame($root.'/notes %20é#', $storage->directory($skillIdentifier));
+        $this->assertSame(realpath($root.'/notes %20é#'), $storage->directory($skillIdentifier));
         $this->assertStorageError(
             'Skill "notes %20%C3%A9#" is not available.',
             fn (): string => $storage->read('notes %20%C3%A9#', 'SKILL.md'),
@@ -254,6 +260,7 @@ class FileSystemSkillStorageTest extends TestCase
         }
     }
 
+    /** @group posix */
     public function test_uses_a_linked_package_directory_as_its_canonical_boundary(): void
     {
         mkdir($this->outsideRoot.'/shared-skill');
@@ -278,6 +285,7 @@ class FileSystemSkillStorageTest extends TestCase
         (new FileSystemSkillStorage($this->skillsRoot.'/'))->read('missing', 'SKILL.md');
     }
 
+    /** @group posix */
     public function test_allows_confined_file_symlinks(): void
     {
         mkdir($this->skillsRoot.'/writing/references', 0o777, true);
@@ -290,6 +298,7 @@ class FileSystemSkillStorageTest extends TestCase
         );
     }
 
+    /** @group posix */
     public function test_rejects_a_file_symlink_that_escapes_the_package(): void
     {
         mkdir($this->skillsRoot.'/writing');
@@ -316,6 +325,7 @@ class FileSystemSkillStorageTest extends TestCase
         );
     }
 
+    /** @group posix */
     public function test_resource_cannot_follow_a_directory_symlink_outside_its_skill(): void
     {
         mkdir($this->skillsRoot.'/my skill');
@@ -331,6 +341,7 @@ class FileSystemSkillStorageTest extends TestCase
         );
     }
 
+    /** @group posix */
     public function test_parent_segments_are_normalized_before_following_a_directory_symlink(): void
     {
         mkdir($this->skillsRoot.'/writing/references/nested', 0o777, true);
