@@ -1,5 +1,7 @@
-# Tests and evaluations
+# Tests, documentation, evaluations and examples
 /tests export-ignore
+/docs export-ignore
+/examples export-ignore
 /evaluators export-ignore
 /evaluation.php export-ignore
 
