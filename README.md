@@ -27,7 +27,8 @@ Requires PHP 8.1+.
 
 | Agent Skills | Neuron AI |
 | --- | --- |
-| 1.x (current) | 4.x |
+| 2.x (current) | 4.x |
+| 1.x | 4.x |
 | 0.x | 3.x |
 
 ```sh
